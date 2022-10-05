@@ -2,6 +2,8 @@
 # A Scattering bview function
 
 The formulation of the function is inspired by the functions under `draw.h` and assumes a `global int` by the name of `n_part` exists. It works in 2D and 3D.
+
+Extended from http://basilisk.fr/sandbox/Antoonvh/scatter.h
  */
 #if dimension == 3 
 void glPointParameterfv(GLenum pname, const GLfloat * params);

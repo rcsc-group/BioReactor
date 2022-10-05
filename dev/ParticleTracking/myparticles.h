@@ -1,5 +1,7 @@
 /**
 #Lagrangian Particles
+
+Extended from: http://basilisk.fr/sandbox/Antoonvh/particles.h
  */
 #include "run.h"
 
