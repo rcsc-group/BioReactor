@@ -34,7 +34,6 @@ const double Th_max = 0.122;   // rad - maximum angle of rotation - 7 degree
 const double T_per  = 1.5;     // sec - 40rpm-1.5; 20rpm-3;
 //*/
 
-
 // &&&&& Mesh refinement &&&&&//
 int    MINLEVEL = 7;
 int    MAXLEVEL = 9;
@@ -68,6 +67,7 @@ const double c_tracer_alpha = 1.0e30; // concentration 1 to concentration 0
 const double c_oxy_alpha    = 30;     // c_l=alpha*c_g; c1=alpha*c2; solubility; concentration 1 to concentration 0; air to water = 1/30;
 
 FILE * fp_stats;
+FILE * fp_particles;
 
 //&&&&& Contact angle &&&&&//
 /*
@@ -153,16 +153,22 @@ int main(){
   
   CFL = 0.02;
 
-  // Pointer of the file to save stats
+  // Files to save stats and log particles
   {
     char name[200];
     sprintf(name, "logstats.dat");
     fp_stats = fopen(name, "w");
   }
+  {
+    char name[200];
+    sprintf(name, "logparticles.dat");
+    fp_particles = fopen(name, "w");
+  }
 
   run();
 
   fclose(fp_stats);
+  fclose(fp_particles);
 }
 
 scalar omega[], viewingfield[], viewingfieldmain[], mylevel[], velnorm[];
@@ -216,7 +222,7 @@ event tracer(t = t_mix){
 event replenish_oxy(t = t_mix; t += 0.1){
 
   foreach(){
-    if (f[] < 1.)
+    if (f[] < 1e-2)
       oxy[] = 1-f[];
   }
 }
@@ -387,6 +393,21 @@ event out_files_refine(t+=dt_file_refine; t<=t_end)
   
     fclose(out_all);  //fclose(interf);
   }
+}
+
+event particlelogging (t += 0.1)
+{
+	// Output current timestep
+	fprintf(fp_particles, "%1.02f ", t);
+
+	// Output x- and y-coordinates for each particle 
+	for (int i = 0; i < n_part; i++)
+	{
+		fprintf(fp_particles, "%1.04f %1.04f ", loc[i].x, loc[i].y);
+	}
+
+	// Line break
+	fprintf(fp_particles, "\n");
 }
 
 event logstats (t += 0.1) {
