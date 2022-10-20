@@ -8,42 +8,56 @@
 //#include "tracer.h"
 #include "utils.h"
 //#include "henry.h"
-//#include "/gpfs/scratch/mkim79/basilisk/henry_oxy2.h"
-#include "henry_oxy3.h"
+#include "/gpfs/scratch/mkim79/basilisk/henry_oxy2.h"
+//#include "henry_oxy.h"
 //#include "view.h"
 
-const double NN      = 128;      // resolution
+#define EMBED            1
+#define CONTACT          0
+#define OXYGEN           1
+#define OXYGEN_CIRCLE    0
+#define OXYGEN_AIR       1
+#define TRACER           1
+#define ACCELERATION     1
+#define AMR              0
+#define DUMP             1
+#define FIGURES          0
+#define VIDEOS           1
+#define OUT_FILES        0
+#define OUT_FILES_REFINE 0
+
+const double NN      = 256;     // resolution
 const double t_change= 11.2278;  // change in rocking motion
 //const double th_cont = 90;     // contact angle
-const double t_mix   = 100.;    // time for releasing tracers
-const double t_dump  = 100.;    // save the dump file
-const double t_end_file = 100.; // t<t_end_file; saving freq=dt_file
-const double t_end   = 500.;    // final time
+const double t_mix   = 1.;    // time for releasing tracers
+const double t_dump  = 1.;    // save the dump file
+const double t_end_file = 10.; // t<t_end_file; saving freq=dt_file
+const double t_end   = 10.;    // final time
 const double dt_file = 0.1123;   // saving frq before t_end_file
 const double dt_file_refine = 0.0281; // saving frq after t_end_file
-const double dt_video= 0.0281;
+const double dt_video= 0.0281*2;  // 0.0281
+const double dt_oxy  = 0.001;
+const int    i_fig   = 500;
 
-///*
 //&&&&&& Bioreactor parameters &&&&&//
 const double L_bio  = 0.4;     // m - reference length scale
 const double Th_max = 0.122;   // rad - maximum angle of rotation - 7 degree
 const double T_per  = 1.5;     // sec - 40rpm-1.5; 20rpm-3;
 const double D_in   = 10.0e-3;  // m
 const double U_in   = 0.0053;  // 0.3316; m/s
-//*/
 
-/*
+
+#if AMR
 // &&&&& Mesh refinement &&&&&//
 int    MINLEVEL = 8;
 int    MAXLEVEL = 10;
 double F_MAX    = 1e-6;
 double U_MAX    = 1e-2;
-*/
+#endif
 
 double LL = 1.0;    // width
 double Ly = 0.5;   // height
 double L_piv = 0.25; // distance to pivot point
-int    i_fig = 500;
 
 scalar ft[], c[], oxy[];   // for tracer and oxygen transfer
 scalar * tracers = {ft}, * stracers = {c,oxy};
@@ -58,19 +72,19 @@ const double mu_w  = 1.0e-3;  // Pa-s @ 20C
 const double mu_a  = 1.81e-5; // Pa-s - why multiplied 10?
 const double grav  = 9.8;     // m/s^2
 const double sigma = 0.0728;  // N/m
-const double D_tracer_1 = 0.44e-9; // concentration = 1; diffusion in water
+const double D_tracer_1 = 0.44e-9; // 0.44e-9; concentration = 1; diffusion in water
 const double D_tracer_2 = 1.0e-30; // concentration = 0; diffusion in air
-const double D_oxy_1 = 1.98e-5; // m^2/s; concentration = 1; diffusion in air
-const double D_oxy_2 = 1.90e-9; // m^2/s; concentration = 0; diffusion in water
-const double c_tracer_alpha = 1.0e30; // concentration 1 to concentration 0
-const double c_oxy_alpha    = 30;     // c_l=alpha*c_g; c1=alpha*c2; solubility; concentration 1 to concentration 0; air to water = 1/30;
+const double D_oxy_1 = 1.90e-9;    // 1.98e-5; m^2/s; phase = 1; diffusion in water
+const double D_oxy_2 = 1.98e-5;    // 1.90e-9; m^2/s; phase = 0; diffusion in air
+const double c_tracer_alpha = 1.0e30;    // concentration 1 to concentration 0
+const double c_oxy_alpha    = 1./30;     // c_l=alpha*c_g; c1=alpha*c2; solubility; concentration 1 to concentration 0; air to water = 1/30;
 
 //&&&&& Contact angle &&&&&//
-/*
+#if CONTACT
 vector h[];
 h.t[left]  = contact_angle(th_cont*pi/180);
 h.t[right] = contact_angle(th_cont*pi/180);
-*/
+#endif
 
 int main(){
   
@@ -96,12 +110,6 @@ int main(){
   D_in_non = D_in/L_bio;        // oxygen support by two inlets
   U_in_non = U_in/U_bio;
 
-  /*
-  dt_file  = (T_per/T_bio)/5;   // saving frq before t_end_file
-  dt_file_refine = (T_per/T_bio)/10; // saving frq after t_end_file
-  dt_video = (T_per/T_bio)/20;
-  */
-
   //***** Dimensionless number *****//
   Re_w = rho_w*U_bio*L_bio/mu_w;
   Re_a = rho_a*U_bio*L_bio/mu_a;
@@ -120,15 +128,17 @@ int main(){
   mu2  = mur*mu1;
   f.sigma = 1./We_w;
 
-  // Contact angle
-  //f.height = h;
+  //  Contact angle
+#if CONTACT
+  f.height = h;
+#endif
   
   // D1 for c=1; D2 for c=0; c1=alpha*c2
   c.D1 = 1./Pe_tracer_1;
   c.D2 = 1./Pe_tracer_2;
   
   //c.alpha = 1.0e30;  // c1 = alpha*c2
-  c.alpha = c_oxy_alpha;
+  c.alpha = c_tracer_alpha;
 
   oxy.D1 = 1./Pe_oxy_1;
   oxy.D2 = 1./Pe_oxy_2;
@@ -154,9 +164,10 @@ int main(){
   //u.n[right] = (y>=0.1) && (y<=0.15)			\
       //              ? dirichlet(-0.01) : dirichlet(0.);
   */
-
+#if EMBED
   u.n[embed] = dirichlet(0.);
   u.t[embed] = dirichlet(0.);
+#endif
 
   //***** Tracers: slope limiter *****//
   //ft.gradient = minmod2;
@@ -167,8 +178,6 @@ int main(){
   NITERMAX = 500;
   TOLERANCE = 1.0e-5;
   
-  CFL = 0.02;
-
   run();
 }
 
@@ -179,7 +188,9 @@ event init (t = 0)
   fraction (f, -y);
 
   // solid
+#if EMBED
   solid (cs,fs, intersection( -(y-0.5*Ly), -(-y-0.5*Ly) ) );
+#endif
 
   // Tracer: positive -> ft=1; negative -> ft=0
   //fraction (ft, -(sq(x-0) + sq(y+0.25*LL) - sq(LL*0.1)) );
@@ -200,26 +211,38 @@ event init (t = 0)
   //}
 }
 
+#if TRACER
 event tracer(t = t_mix){
-  //c.alpha = c_tracer_alpha;
-
   fraction(c, -(sq(x-0) + sq(y+Ly*0.5*0.5) - sq(0.084*Ly)) );
-  /*
-  foreach(){
-    if (f[] < 1.)
-      oxy[] = 1-f[];
-  }
-  */
 }
-///*
-event oxygen(i++){
-  if (t>=t_mix){
+#endif
+
+#if OXYGEN
+//event oxygen (t = t_mix){
+// event oxygen(t = t_mix; t += dt_oxy){
+event oxygen (t=t_mix; i++){
+
+#if OXYGEN_CIRCLE
+  fraction(oxy, -(sq(x-0) + sq(y-Ly*0.5*0.5) - sq(0.084*Ly)) );
+#endif
+
+#if OXYGEN_AIR
+  foreach(){
+    //if (abs(f[]) < 1e-4)
+    if ((f[] == 0) && (cs[]==1))
+      oxy[] = 1.;
+  }
+#endif
+
+  //if (t>=t_mix){
+  /*
     foreach(){
-      //if (f[] < 1.)
-      if (f[] == 0.)
+      if (f[] < 1.)
+      //if (f[] == 0.)
 	oxy[] = 1-f[];
     }
-  }
+  */
+    //}
   /*
   if (t>=t_mix){
     u.n[left]  = (y>=0.20) && (y<=0.225) ? dirichlet(U_in_non) : dirichlet(0.);
@@ -248,7 +271,9 @@ event oxygen(i++){
                 ? dirichlet(-U_in_non) : dirichlet(0.);
   */
 }
-//*/
+#endif
+
+#if ACCELERATION
 //&&&&& acceleration &&&&&&//
 event acceleration(i++)
 {
@@ -279,14 +304,16 @@ event acceleration(i++)
   a = av;
   //*/
 }
+#endif
 
-/*
+#if AMR
 //&&&&& Mesh refinement  &&&&&//
 event adapt(i++){
   adapt_wavelet ({f,u}, (double []){F_MAX,U_MAX,U_MAX,U_MAX},maxlevel=MAXLEVEL,minlevel=MINLEVEL);
 }
-*/
+#endif
 
+#if DUMP
 event dump(t=t_dump){
   dump(file="dump");
   snprintf(buf1, sizeof(buf1), "Dump_%d_%g_%d.txt",N,t,pid());
@@ -296,12 +323,14 @@ event dump(t=t_dump){
   }
   fclose(out_all);
 }
+#endif
 
 //***** Log files  *****//
 event pro_logfile(i++){
   fprintf(stderr, "%d %d %g %d %d \n", i, N, t, mgp.i, mgu.i);    
 }
 
+#if VIDEOS 
 //***** Animations
 event movies(t += dt_video; t<=t_end)
 {
@@ -310,10 +339,10 @@ event movies(t += dt_video; t<=t_end)
   
   output_ppm(omega, file = "vorticity.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
 	     min = -50, max = 50, linear = true, map = cool_warm);
-  output_ppm(u.x, file = "x-vel.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
-	     min = -0.1, max = 0.1, linear = true, map = cool_warm);
-  output_ppm(u.y, file = "y-vel.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
-  	     min = -0.1, max = 0.1, linear = true, map = cool_warm);  
+  //output_ppm(u.x, file = "x-vel.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
+  //	     min = -0.1, max = 0.1, linear = true, map = cool_warm);
+//output_ppm(u.y, file = "y-vel.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
+//  	     min = -0.1, max = 0.1, linear = true, map = cool_warm);  
   output_ppm(f, file = "vol_fraction.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
 	     min = -0.1, max = 1.1, linear = true, map = cool_warm);
   //output_ppm(ft, file = "tracer.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
@@ -321,8 +350,9 @@ event movies(t += dt_video; t<=t_end)
   output_ppm(c, file = "tracer.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
   	     min = 0, max = 1, linear = true, map = cool_warm);  
   output_ppm(oxy,file = "oxygen.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
-	     min = 0, max = 1, linear = true, map = cool_warm);
+	     min = 0, max = 0.04, linear = true, map = cool_warm);
 }
+#endif
 
 /*
 event animationU (t += dt_video)
@@ -337,6 +367,7 @@ event animationU (t += dt_video)
 }
 */
 
+#if FIGURES
 event figures(i += i_fig; t <= t_end)
 {
   scalar omega[];
@@ -346,12 +377,14 @@ event figures(i += i_fig; t <= t_end)
   output_ppm(f, file = "vol_frac.png");
   //output_ppm(ft, file = "tracer.png");
   output_ppm(omega, file="vorticity.png");
-  output_ppm(u.x, file="x-vel.png");
-  output_ppm(u.y, file="y-vel.png");
+  //output_ppm(u.x, file="x-vel.png");
+  //output_ppm(u.y, file="y-vel.png");
   //output_ppm( cs, file="solid.png");
   output_ppm(oxy, file="oxygen.png");
 }
-/*
+#endif
+
+#if OUT_FILES
 event out_files(t+=dt_file; t<=t_end_file)
 {
   snprintf(buf1, sizeof(buf1), "Data_all/Data_all_%d_%.9g_%d.txt",N,t,pid());
@@ -366,8 +399,9 @@ event out_files(t+=dt_file; t<=t_end_file)
   
   fclose(out_all);  //fclose(interf);
 }
-*/
-/*
+#endif
+
+#if OUT_FILES_REFINE
 event out_files_refine(t+=dt_file_refine; t<=t_end)
 {
   if (t >= t_end_file){
@@ -384,4 +418,4 @@ event out_files_refine(t+=dt_file_refine; t<=t_end)
     fclose(out_all);  //fclose(interf);
   }
 }
-*/
+#endif
