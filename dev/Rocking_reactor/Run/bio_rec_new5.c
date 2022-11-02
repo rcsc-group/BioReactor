@@ -25,7 +25,7 @@
 #define FIGURES          0
 #define VIDEOS_original  1
 #define VIDEOS_new       0
-#define OUT_FILES        0
+#define OUT_FILES        1
 #define OUT_FILES_REFINE 0
 
 const double NN      = 512;     // resolution
