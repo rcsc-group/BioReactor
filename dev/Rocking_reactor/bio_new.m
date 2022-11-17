@@ -1,22 +1,23 @@
 clc; clear all; close all;
 
 N_pid   = 1;  % # of CPU for parallel computing
-N       = 512;
+N       = 256;
 shape   = 1;   % 0: square; 1: rectangular
 Oxy_sat = 1;
 T_char  = 2.6719;
 t_mix   = 100;
 H_coeff = 1./30;
 
-dt_File = 0.1123*10; % 0.1123; 0.0244
+dt_File = 0.1123*1; % 0.1123; 0.0244
 Ini_t   = 100.0593; % 50.018; 40.0038;
-Fin_t   = 593; % 499.8473; % 20.0-dt_File;
+Fin_t   = 100.3692; % 499.8473; % 20.0-dt_File;
 
-% home = ['C:\0_Code\1_bioreactor\basilisk_new\basilisk\src\bioreactor\oxygen_test\oxy23\Data_all'];
+home  = ['E:\1_bioreactor\Data_save\bio_rec_new3_save\oxy23\Data_all\'];
+home1 = ['E:\1_bioreactor\Data_save\bio_rec_new3_save\oxy23\'];
 % home = ['E:\1_bioreactor\Data_save\bio_rec_new3_save\oxy26\Data_all'];
-home  = ['/gpfs/scratch/mkim79/basilisk/bio_rec_new3/oxy28/oxy28_save'];
-home1 = ['/gpfs/scratch/mkim79/basilisk/bio_rec_new3/oxy28/'];
-home_data = [home,'/Data_all_'];
+% home  = ['/gpfs/scratch/mkim79/basilisk/bio_rec_new3/oxy24/oxy24_save'];
+% home1 = ['/gpfs/scratch/mkim79/basilisk/bio_rec_new3/oxy24/'];
+home_data = [home,'\Data_all_'];
 % home = ['E:\1_bioreactor\Data_save\bio_rot_sq_contact\N=',num2str(N),'_th=',num2str(th),'\Data_all'];
 
 
