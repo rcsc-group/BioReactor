@@ -1,3 +1,4 @@
+//#include "grid/quadtree.h"
 #include "embed.h"
 //#include "embed-tree.h"
 #include "navier-stokes/centered.h"
@@ -12,15 +13,17 @@
 #include "/gpfs/scratch/mkim79/basilisk/henry_oxy2.h"
 //#include "henry_oxy.h"
 #include "/gpfs/scratch/mkim79/basilisk/view2.h"
+#include "tag.h"
 
 #define EMBED            1
 #define CONTACT          0
 #define OXYGEN           1
 #define OXYGEN_CIRCLE    0
-#define OXYGEN_AIR       0
+#define OXYGEN_AIR       1
 #define TRACER           1
 #define ACCELERATION     1
 #define AMR              1
+#define REMOVE_DROP      1
 #define CFL_COND         0 
 #define DUMP             1
 #define FIGURES          0
@@ -29,29 +32,39 @@
 #define OUT_FILES        1
 #define OUT_FILES_REFINE 0
 
+//&&& Simulation setup &&&//
 const double NN      = 128;     // resolution
-const double t_change= 11.2278;  // change in rocking motion
-const double th_cont = 90;     // contact angle
-const double t_mix   = 100;    // time for releasing tracers
-const double t_dump  = 100;    // save the dump file
-const double t_end_file = 600; // t<t_end_file; saving freq=dt_file
-const double t_end   = 600;    // final time
-const double dt_file = 0.1123*10;   // saving frq before t_end_file
+const double t_change= 12.1487; // change in rocking motion
+const double th_cont = 90;      // contact angle
+const double t_mix   = 25;    // time for releasing tracers
+const double t_dump  = 25;    // save the dump file
+const double t_end_file = 100; // t<t_end_file; saving freq=dt_file
+const double t_end   = 100;    // final time
+const double dt_file = 0.6074/2;   // saving frq before t_end_file
 const double dt_file_refine = 0.0281; // saving frq after t_end_file
-const double dt_video= 0.0281*1;  // 0.0281
+const double dt_video= 0.6074/10;  // 0.0281
 const double dt_oxy  = 0.001;
 const int    i_fig   = 500;
-// const double CFL_num = 0.1;
+const double CFL_num = 0.1;    // CFL number
+const double N_output= 512;    // output resolution
+const double remove_minsize   = 20;
+const double remove_threshold = 1.0e-4;
 
-double LL = 1.0;    // width
-double Ly = 0.5;   // height
-double L_piv = 0.25; // distance to pivot point
+//&&& Reactor geometry &&&//
+double LL = 1.0;        // width
+double Ly = 0.286;      // 0.50; height
+double L_piv = 0.143;   // 0.25; distance to pivot point
+double L_bio  = 0.25;  // atof(argv[1]);   // m - reference length scale
+double ANGLE  = 7.;    // atof(argv[2]);   // degree
+double RPM    = 40;    // atof(argv[3]);   // RPM
 
-scalar ft[], c[], oxy[];   // for tracer and oxygen transfer
-scalar * tracers = {ft}, * stracers = {c,oxy};
-char buf1[50], buf2[50], buf3[20], buf4[20], buf5[20], buf6[20];
-double (* gradient) (double, double, double) = minmod2;
-double U0, Ub, Re_w, Re_a, We_w, Fr, rhor, mur, Pe_tracer_1, Pe_tracer_2, Pe_oxy_1, Pe_oxy_2, Th, Th_d, Th_2d, U_bio, w_bio, w_bio_st, T_bio, Th_max2, D_in_non, U_in_non;
+// &&&&& Mesh refinement &&&&&//
+#if AMR
+const int MINLEVEL = 7;  // atof(argv[4]);
+const int MAXLEVEL = 10;  // atof(argv[5]);
+const double F_MAX = 1e-6;
+const double U_MAX = 0;
+#endif
 
 //&&&&& Material properties &&&&&//
 const double rho_w = 1.0e3;   // kg/m^3
@@ -74,9 +87,12 @@ h.t[left]  = contact_angle(th_cont*pi/180);
 h.t[right] = contact_angle(th_cont*pi/180);
 #endif
 
-double L_bio, Th_max, T_per, ANGLE, RPM;
-int F_MAX, U_MAX, MINLEVEL, MAXLEVEL;
-
+double Th_max, T_per, R_tr, x_tr, y_tr;
+scalar ft[], c[], oxy[];   // for tracer and oxygen transfer
+scalar * tracers = {ft}, * stracers = {c,oxy};
+char buf1[50], buf2[50], buf3[20], buf4[20], buf5[20], buf6[20];
+double (* gradient) (double, double, double) = minmod2;
+double U0, Ub, Re_w, Re_a, We_w, Fr, rhor, mur, Pe_tracer_1, Pe_tracer_2, Pe_oxy_1, Pe_oxy_2, Th, Th_d, Th_2d, U_bio, w_bio, w_bio_st, T_bio, Th_max2, D_in_non, U_in_non;
 FILE * fp_stats;
 
 int main(int argc, char * argv[]){
@@ -88,20 +104,13 @@ int main(int argc, char * argv[]){
   origin (-L0/2., -L0/2.); // origin
   init_grid(NN);           // resolution
 
-  L_bio  = atof(argv[1]);   // m - reference length scale
-  ANGLE  = atof(argv[2]);   // degree
-  RPM    = atof(argv[3]);   // RPM
+  //&&& Tracer conditions &&&//
+  R_tr  = 0.0084/L_bio;    // tracer radius
+  x_tr  = 0.;         // tracer position
+  y_tr  = -Ly*0.5*0.5;
 
   Th_max = ANGLE*pi/180;    // radian
   T_per  = 60./RPM;          // sec
- 
-#if AMR
-  // &&&&& Mesh refinement &&&&&//
-  MINLEVEL = atof(argv[4]);
-  MAXLEVEL = atof(argv[5]);
-  F_MAX    = 1e-8;
-  U_MAX    = 0.9; // RC
-#endif
   
   double H_bio,V_bio;
   H_bio  = L_bio*Ly;
@@ -226,6 +235,14 @@ event init (t = 0)
     //u.y[] = -U0*x;
   //}
 }
+
+#if REMOVE_DROP
+event remove_drop(i++){
+  remove_droplets(f,remove_minsize,remove_threshold,false);  // remove droplets
+  remove_droplets(f,remove_minsize,remove_threshold,true);   // remove bubbles
+}
+#endif
+
 #if CFL_COND
 event CFL_cond(i++){
   CFL = CFL_num;
@@ -234,7 +251,7 @@ event CFL_cond(i++){
 
 #if TRACER
 event tracer(t = t_mix){
-  fraction(c, -(sq(x-0) + sq(y+Ly*0.5*0.5) - sq(0.084*Ly)) );
+  fraction(c, -(sq(x-x_tr) + sq(y-y_tr) - sq(R_tr)) );
 }
 #endif
 
@@ -329,9 +346,11 @@ event acceleration(i++)
 
 #if AMR
 //&&&&& Mesh refinement  &&&&&//
-event adapt(i++){
-  // adapt_wavelet ((scalar *){cs,fs,f,u}, (double []){U_MAX,U_MAX,F_MAX,U_MAX,U_MAX},maxlevel=MAXLEVEL,minlevel=MINLEVEL);
-  adapt_wavelet ((scalar *){f,u,cs,fs}, (double []){F_MAX,U_MAX,U_MAX,U_MAX,U_MAX},maxlevel=MAXLEVEL,minlevel=MINLEVEL);
+event adapt(t=0){
+  //adapt_wavelet ((scalar *){f,u,cs,fs}, (double []){F_MAX,U_MAX,U_MAX,U_MAX,U_MAX},maxlevel=MAXLEVEL,minlevel=MINLEVEL);
+  
+  // Refine the domain inside bioreactor
+  refine(level<MAXLEVEL && (  (y > -0.55*Ly) && (y < 0.55*Ly) ));
 }
 #endif
 
@@ -352,15 +371,15 @@ event dump(t=t_dump){
 //  fprintf(stderr, "%d %d %g %d %d \n", i, N, t, mgp.i, mgu.i);
 //}
 
-event logstats (i++; t <= t_end) {
+event logstats (t+=0.1; t <= t_end) {
 
     timing s = timer_timing (perf.gt, i, perf.tnc, NULL);
  
     // i, timestep, no of cells, real time elapsed, cpu time
-       if (pid() == 0){
-    fprintf(fp_stats, "i: %i t: %g dt: %g #Cells: %ld Wall clock time (s): %g CPU time (s): %g \n", i, t, dt, grid->n, perf.t, s.cpu);
-    fflush(fp_stats);
-      }
+    if (pid() == 0){
+      fprintf(fp_stats, "i: %i t: %g dt: %g #Cells: %ld Wall clock time (s): %g CPU time (s): %g \n", i, t, dt, grid->n, perf.t, s.cpu);
+      fflush(fp_stats);
+    }
 }
 
 /*
@@ -390,8 +409,13 @@ event saveInterfaces (t += 10.0) {
 //***** Animations
 event movies(t += dt_video; t<=t_end)
 {
-  scalar omega[], m[];
+  scalar omega[], cc[], oxyy[];
   vorticity (u, omega);
+/*
+foreach(){
+cc[] = c[];
+oxyy[] = oxy[];
+}*/
   
   output_ppm(omega, file = "vorticity.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
 	     min = -50, max = 50, linear = true, map = cool_warm);
@@ -399,14 +423,14 @@ event movies(t += dt_video; t<=t_end)
   //	     min = -0.1, max = 0.1, linear = true, map = cool_warm);
   //output_ppm(u.y, file = "y-vel.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
   //  	     min = -0.1, max = 0.1, linear = true, map = cool_warm);  
-  output_ppm(f, file = "vol_fraction.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
-	     min = 0.0, max = 1.0, linear = true, map = cool_warm);
+  //output_ppm(f, file = "vol_fraction.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
+//	     min = 0.0, max = 1.0, linear = true, map = cool_warm);
   //output_ppm(ft, file = "tracer.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
   //	     linear = true, map = cool_warm);
-  output_ppm(c, file = "tracer.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
-  	     min = 0, max = 1, linear = true, map = cool_warm);  
-  output_ppm(oxy,file = "oxygen.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
-	     min = 0, max = 0.04, linear = true, map = cool_warm);
+  //output_ppm(cc, file = "tracer.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
+  //	     min = 0, max = 1, linear = true, map = cool_warm);  
+  //output_ppm(oxyy,file = "oxygen.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
+//	     min = 0, max = 0.04, linear = true, map = cool_warm);
 }
 #endif
 
@@ -445,7 +469,7 @@ event movies_upgrade(t += dt_video; t<=t_end)
   view(width=1200,height=1200,fov=24.0,ty=0.0);
   //draw_vof("cs",filled=-1,fc={1,1,1});
   draw_vof("f",lw=2);
-  cells();
+  //cells();
   squares("omega",map=cool_warm,min=-50.0,max=50.0);
   //draw_vof("cs","fs");
   sprintf(timestring,"t=%2.03fs",t*T_bio);
@@ -458,11 +482,13 @@ event movies_upgrade(t += dt_video; t<=t_end)
   view(width=1200,height=1200,fov=24.0,ty=0.0);
   //draw_vof("cs",filled=-1,fc={1,1,1});
   draw_vof("f",lw=2);
+  cells();
   squares("f",map=cool_warm,min=0.0,max=1.0);
   //draw_vof("cs","fs");
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
-  save("volume_fraction.mp4");
+  save("volume_fraction3.mp4");
+  save("volume_fraction.png");
 
   // tracer
   clear();
@@ -474,6 +500,7 @@ event movies_upgrade(t += dt_video; t<=t_end)
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
   save("tracer3.mp4");
+  save("tracer.png");
 
   // oxygen
   clear();
@@ -485,8 +512,7 @@ event movies_upgrade(t += dt_video; t<=t_end)
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
   save("oxygen3.mp4");
-
-
+  save("oxygen.png");
 }
 #endif
 
@@ -523,23 +549,22 @@ event figures(i += i_fig; t <= t_end)
 #if OUT_FILES
 event out_files(t+=dt_file; t<=t_end_file)
 {
+  /*
   snprintf(buf1, sizeof(buf1), "Data_all/Data_all_%d_%.9g_%d.txt",N,t,pid());
-  //snprintf(buf2, sizeof(buf2), "alpha_%g.txt",t);
-  FILE * out_all = fopen(buf1,"w");
-  //FILE * interf = fopen(buf2,"w");  
+  FILE * out_all = fopen(buf1,"wb");  
     
   foreach(){
     fprintf(out_all,"%g %g %g %g %g %g %g %g\n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[]);
   }
-  //output_facets(f,interf);
-  
-  fclose(out_all);  //fclose(interf);
-
+  fclose(out_all);
+  */
+///*
   char name[80];
   sprintf(name,"Data_all/Output_%d_%.4g.dat",N,t);
   FILE * out_all2 = fopen(name,"w");
-  output_field({u.x,u.y,f,c,cs,oxy},out_all2,n=256,linear=true);
+  output_field({u.x,u.y,f,c,cs,oxy},out_all2,n=N_output,linear=true);
   fclose(out_all2);
+//*/
 }
 #endif
 
