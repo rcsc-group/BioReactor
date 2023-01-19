@@ -1,18 +1,12 @@
-//#include "grid/quadtree.h"
 #include "embed.h"
-//#include "embed-tree.h"
 #include "navier-stokes/centered.h"
 #define mu(f) ( 1./(clamp(f,0,1)*(1./mu1 - 1./mu2) + 1./mu2)  )
 //#include "contact.h"
 #include "two-phase.h"
 #include "tension.h"
 #include "navier-stokes/conserving.h"
-#include "utils.h"
-//#include "henry_oxy2.h"
-//#include "view.h"
-#include "/gpfs/scratch/mkim79/basilisk/henry_oxy2.h"
-//#include "henry_oxy.h"
-#include "/gpfs/scratch/mkim79/basilisk/view2.h"
+#include "henry_oxy2.h"
+#include "view2.h"
 #include "tag.h"
 
 #define EMBED            1
@@ -25,7 +19,7 @@
 #define AMR              1
 #define REMOVE_DROP      1
 #define CFL_COND         0 
-#define DUMP             1
+#define DUMP             0
 #define FIGURES          0
 #define VIDEOS_original  0
 #define VIDEOS_new       1
@@ -33,11 +27,11 @@
 #define OUT_FILES_REFINE 0
 
 //&&& Simulation setup &&&//
-const double NN      = 128;     // resolution
+const double NN      = 512;     // resolution
 const double t_change= 12.1487; // change in rocking motion
 const double th_cont = 90;      // contact angle
-const double t_mix   = 25;    // time for releasing tracers
-const double t_dump  = 25;    // save the dump file
+const double t_mix   = 25;      // time for releasing tracers
+const double t_dump  = 25;      // save the dump file
 const double t_end_file = 100; // t<t_end_file; saving freq=dt_file
 const double t_end   = 100;    // final time
 const double dt_file = 0.6074/2;   // saving frq before t_end_file
@@ -46,25 +40,15 @@ const double dt_video= 0.6074/10;  // 0.0281
 const double dt_oxy  = 0.001;
 const int    i_fig   = 500;
 const double CFL_num = 0.1;    // CFL number
-const double N_output= 512;    // output resolution
+const double N_output= 128;    // output resolution
 const double remove_minsize   = 20;
 const double remove_threshold = 1.0e-4;
+
 
 //&&& Reactor geometry &&&//
 double LL = 1.0;        // width
 double Ly = 0.286;      // 0.50; height
 double L_piv = 0.143;   // 0.25; distance to pivot point
-double L_bio  = 0.25;  // atof(argv[1]);   // m - reference length scale
-double ANGLE  = 7.;    // atof(argv[2]);   // degree
-double RPM    = 40;    // atof(argv[3]);   // RPM
-
-// &&&&& Mesh refinement &&&&&//
-#if AMR
-const int MINLEVEL = 7;  // atof(argv[4]);
-const int MAXLEVEL = 10;  // atof(argv[5]);
-const double F_MAX = 1e-6;
-const double U_MAX = 0;
-#endif
 
 //&&&&& Material properties &&&&&//
 const double rho_w = 1.0e3;   // kg/m^3
@@ -92,40 +76,53 @@ scalar ft[], c[], oxy[];   // for tracer and oxygen transfer
 scalar * tracers = {ft}, * stracers = {c,oxy};
 char buf1[50], buf2[50], buf3[20], buf4[20], buf5[20], buf6[20];
 double (* gradient) (double, double, double) = minmod2;
-double U0, Ub, Re_w, Re_a, We_w, Fr, rhor, mur, Pe_tracer_1, Pe_tracer_2, Pe_oxy_1, Pe_oxy_2, Th, Th_d, Th_2d, U_bio, w_bio, w_bio_st, T_bio, Th_max2, D_in_non, U_in_non;
+double U0, Ub, Re_w, Re_a, We_w, Fr, rhor, mur, Pe_tracer_1, Pe_tracer_2, Pe_oxy_1, Pe_oxy_2, Th, Th_d, Th_2d, U_bio, w_bio, w_bio_st, T_per_st, T_bio, Th_max2, D_in_non, U_in_non;
+int MINLEVEL, MAXLEVEL;
 FILE * fp_stats;
 
 int main(int argc, char * argv[]){
-  
-  //***** Initial conditions *****// 
-  L0 = LL;                 // domain size
-  //mask (y > 0.9 ? top:none);
-  
+
+  // Operating condition
+  double L_bio = atof(argv[1]);   // m - reference length scale
+  double ANGLE = atof(argv[2]);   // degree
+  double RPM   = atof(argv[3]);   // RPM
+
+  L0 = LL;                 // domian size
   origin (-L0/2., -L0/2.); // origin
-  init_grid(NN);           // resolution
+#if AMR == 0
+  init_grid(NN);           // uniform grid
+#endif
+
+  // Mesh refinement
+#if AMR
+  MINLEVEL = atof(argv[4]);
+  MAXLEVEL = atof(argv[5]);
+  double F_MAX = 1e-6;
+  double U_MAX = 0;
+#endif
 
   //&&& Tracer conditions &&&//
   R_tr  = 0.0084/L_bio;    // tracer radius
-  x_tr  = 0.;         // tracer position
+  x_tr  = 0.;              // tracer position
   y_tr  = -Ly*0.5*0.5;
 
-  Th_max = ANGLE*pi/180;    // radian
-  T_per  = 60./RPM;          // sec
+  Th_max = ANGLE*pi/180;   // radian
+  T_per  = 60./RPM;        // sec
   
   double H_bio,V_bio;
   H_bio  = L_bio*Ly;
   V_bio  = L_bio/4*(H_bio + 0.5*L_bio*tan(Th_max));
-  
-  //U_bio  = L_bio*Th_max/T_per;  // reference velocity m/s
-  U_bio  = V_bio/(H_bio*0.5)/T_per;
-  T_bio  = L_bio/U_bio;
+  U_bio  = V_bio/(H_bio*0.5)/T_per; // Characteristic velocity
+  T_bio  = L_bio/U_bio;             // Characteristic time
   w_bio  = 2*pi/T_per;          // angular velocity rad/s
   w_bio_st = w_bio*T_bio;       // dimensionless w_bio = 2*pi
+  T_per_st = T_per/T_bio;       // dimensionless rocking period
   U0     = w_bio_st*Th_max;     // initial velocity (clockwise)
   Ub     = 0.;                  // Boundary velocity
 
-  //D_in_non = D_in/L_bio;        // oxygen support by two inlets
-  //U_in_non = U_in/U_bio;
+  //dt_file = T_per_st/2;        // saving frq before t_end_file
+  //dt_file_refine = T_per_st/5; // saving frq after t_end_file
+  //dt_video= T_per_st/10;       // 0.0281
 
   //***** Dimensionless number *****//
   Re_w = rho_w*U_bio*L_bio/mu_w;
@@ -138,28 +135,32 @@ int main(int argc, char * argv[]){
   Pe_tracer_2 = U_bio*L_bio/D_tracer_2;
   Pe_oxy_1    = U_bio*L_bio/D_oxy_1;
   Pe_oxy_2    = U_bio*L_bio/D_oxy_2;
-    
+
   rho1 = 1.0;
   rho2 = rho1*rhor;
   mu1  = 1./Re_w;
   mu2  = mur*mu1;
   f.sigma = 1./We_w;
-
+  
   //  Contact angle
 #if CONTACT
   f.height = h;
 #endif
-  
+
+#if TRACER  
   // D1 for c=1; D2 for c=0; c1=alpha*c2
   c.D1 = 1./Pe_tracer_1;
   c.D2 = 1./Pe_tracer_2;
   
   //c.alpha = 1.0e30;  // c1 = alpha*c2
   c.alpha = c_tracer_alpha;
+#endif
 
+#if OXYGEN
   oxy.D1 = 1./Pe_oxy_1;
   oxy.D2 = 1./Pe_oxy_2;
   oxy.alpha = c_oxy_alpha;
+#endif
 
   //&&&&& Boundary conditions &&&&&//
   u.n[left]  = dirichlet(0.);
@@ -171,35 +172,22 @@ int main(int argc, char * argv[]){
   u.n[bottom] = dirichlet(0.);
   u.t[bottom] = dirichlet(0.);
 
-  /*
-  oxy[left]  = (y>=0.1) && (y<=0.15) && (f==1)		\
-                ? dirichlet(1.) : dirichlet(0.);
-  //oxy[right] = (y>=0.1) && (y<=0.15)			\
-      //              ? dirichlet(1.) : dirichlet(0.);
-  u.n[left]  = (y>=0.1) && (y<=0.15)	\
-                ? dirichlet(1.) : dirichlet(0.);
-  //u.n[right] = (y>=0.1) && (y<=0.15)			\
-      //              ? dirichlet(-0.01) : dirichlet(0.);
-  */
 #if EMBED
   u.n[embed] = dirichlet(0.);
   u.t[embed] = dirichlet(0.);
 #endif
 
   //***** Tracers: slope limiter *****//
-  //ft.gradient = minmod2;
   c.gradient = minmod2;
   oxy.gradient = minmod2;
   
-  {
-  	char name[200];
-  	sprintf(name, "logstats.dat");
-  	fp_stats = fopen(name, "w");
-  }
-
+  char name[200];
+  sprintf(name, "logstats.dat");
+  fp_stats = fopen(name, "w");
+  
   // Iterations
-  NITERMAX = 300; // RC
-  TOLERANCE = 1.0e-4; // RC
+  NITERMAX = 300; 
+  TOLERANCE = 1.0e-4;
   
   run();
   
@@ -216,24 +204,6 @@ event init (t = 0)
 #if EMBED
   solid (cs,fs, intersection( -(y-0.5*Ly), -(-y-0.5*Ly) ) );
 #endif
-
-  // Tracer: positive -> ft=1; negative -> ft=0
-  //fraction (ft, -(sq(x-0) + sq(y+0.25*LL) - sq(LL*0.1)) );
-
-  // Oxygen: positive -> c=1; negative -> c=0
-  // c.phi1 -> f(volume fraction); c.phi2 -> 1-f(1-volume fraction)
-  // c.D1 -> volume fraction=1 -> water in bioreactor
-  // c.D2 -> volume fraction=0 -> air in bioreactor
-  // fraction (c, -(sq(x-0) + sq(y+0.25*LL) - sq(0.1*LL)) );  
-  
-  // initial velocity field
-  // solid vol fraction = 1 (no solid) -> Ux0, solid vol fraction = 0 (w/solid) -> u.x = 0
-  //foreach(){
-  //u.x[] =  U0*(y+L_piv*cos(Th_max));
-  // u.y[] = -U0*(x+L_piv*sin(Th_max));
-    //u.x[] =  U0*y;
-    //u.y[] = -U0*x;
-  //}
 }
 
 #if REMOVE_DROP
@@ -256,8 +226,6 @@ event tracer(t = t_mix){
 #endif
 
 #if OXYGEN
-//event oxygen (t = t_mix){
-// event oxygen(t = t_mix; t += dt_oxy){
 event oxygen (t=t_mix; i++){
 
 #if OXYGEN_CIRCLE
@@ -271,43 +239,6 @@ event oxygen (t=t_mix; i++){
       oxy[] = 1.;
   }
 #endif
-
-  //if (t>=t_mix){
-  /*
-    foreach(){
-      if (f[] < 1.)
-      //if (f[] == 0.)
-	oxy[] = 1-f[];
-    }
-  */
-    //}
-  /*
-  if (t>=t_mix){
-    u.n[left]  = (y>=0.20) && (y<=0.225) ? dirichlet(U_in_non) : dirichlet(0.);
-    u.n[right] = (y>=0.20) && (y<=0.225) ? dirichlet(-U_in_non): dirichlet(0.);
-    foreach(){
-      //if ((y>=0.20) && (y<=0.225) && (x<=(-0.5*LL+3./NN)) ){
-      if ((y>=0.20) && (y<=0.225) && ((x<=(-0.5*LL+3./NN)) || (x>=(0.5*LL-3./NN)) ) ){
-	//u.x[] = 0.01;
-	oxy[] = 1.;
-      }
-    }
-  }
-  */
-  /*
-  oxy[left]  = (y>=(Ly*0.5*0.5-0.5*D_in_non)) &&     \
-               (y<=(Ly*0.5*0.5+0.5*D_in_non)) \
-                ? dirichlet(1.) : dirichlet(0.);
-  oxy[right] = (y>=(Ly*0.5*0.5-0.5*D_in_non)) &&  \
-               (y<=(Ly*0.5*0.5+0.5*D_in_non)) \
-                ? dirichlet(1.) : dirichlet(0.);
-  u.n[left]  = (y>=(Ly*0.5*0.5-0.5*D_in_non)) &&        \
-               (y<=(Ly*0.5*0.5+0.5*D_in_non))           \
-                ? dirichlet(U_in_non) : dirichlet(0.);
-  u.n[right] = (y>=(Ly*0.5*0.5-0.5*D_in_non)) && \
-               (y<=(Ly*0.5*0.5+0.5*D_in_non)) \
-                ? dirichlet(-U_in_non) : dirichlet(0.);
-  */
 }
 #endif
 
@@ -315,21 +246,20 @@ event oxygen (t=t_mix; i++){
 //&&&&& acceleration &&&&&&//
 event acceleration(i++)
 {
-  ///*
-  // Rotation
+  // initial stage
   if (t >= t_change){
     Th    = Th_max*sin(w_bio_st*t);
     Th_d  = w_bio_st*Th_max*cos(w_bio_st*t);
     Th_2d = -w_bio_st*w_bio_st*Th_max*sin(w_bio_st*t);
   }
+  // regular state
   else if (t < t_change){
     Th_max2 = (Th_max-0)/(t_change-0)*t;
     Th    = Th_max2*sin(w_bio_st*t);
     Th_d  = w_bio_st*Th_max2*cos(w_bio_st*t);
     Th_2d = -w_bio_st*w_bio_st*Th_max2*sin(w_bio_st*t);
   }
-  //*/
-  ///* 
+   
   face vector av = a;
   // 1st: gravitational force, 2nd: Coriolis force
   // 3rd: centrifugal force,   4th: azimuthal force, 5th: no traslational force
@@ -340,17 +270,13 @@ event acceleration(i++)
     av.y[] = -cos(Th)/(Fr*Fr) - 2*Th_d*face_value(u.x,0)	\
     + Th_d*Th_d*(y+L_piv*cos(Th)) - Th_2d*(x+L_piv*sin(Th));
   a = av;
-  //*/
 }
 #endif
 
 #if AMR
-//&&&&& Mesh refinement  &&&&&//
-event adapt(t=0){
-  //adapt_wavelet ((scalar *){f,u,cs,fs}, (double []){F_MAX,U_MAX,U_MAX,U_MAX,U_MAX},maxlevel=MAXLEVEL,minlevel=MINLEVEL);
-  
+event adapt( t=0 ){  
   // Refine the domain inside bioreactor
-  refine(level<MAXLEVEL && (  (y > -0.55*Ly) && (y < 0.55*Ly) ));
+  refine(level<MAXLEVEL && (  (y > -0.7*Ly) && (y < 0.7*Ly) ));
 }
 #endif
 
@@ -365,11 +291,6 @@ event dump(t=t_dump){
   fclose(out_all);
 }
 #endif
-
-//***** Log files  *****//
-//event pro_logfile(i++){
-//  fprintf(stderr, "%d %d %g %d %d \n", i, N, t, mgp.i, mgu.i);
-//}
 
 event logstats (t+=0.1; t <= t_end) {
 
@@ -405,17 +326,13 @@ event saveInterfaces (t += 10.0) {
     fclose(fp1);
 }
 */
+
 #if VIDEOS_original 
 //***** Animations
 event movies(t += dt_video; t<=t_end)
 {
   scalar omega[], cc[], oxyy[];
   vorticity (u, omega);
-/*
-foreach(){
-cc[] = c[];
-oxyy[] = oxy[];
-}*/
   
   output_ppm(omega, file = "vorticity.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
 	     min = -50, max = 50, linear = true, map = cool_warm);
@@ -441,37 +358,13 @@ event movies_upgrade(t += dt_video; t<=t_end)
   char timestring[100];
 
   vorticity (u,omega);
-  
-  /*
-  foreach(){
-    cc[] = c[];
-    ff[] = f[];
-    oxyy[] = oxy[];
-    if (cs[] < 1){
-      omega[] = 1e30;
-      ff[] = 1e30;
-      cc[] = 1e30;
-      oxyy[] = 1e30;
-    }
-  }
-  output_ppm(omega, file = "vorticity2.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
-            min = -50, max = 50, linear = true, map = cool_warm);
-  output_ppm(ff, file = "vol_fraction2.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
-            min = -0.1, max = 1.1, linear = true, map = cool_warm);
-  output_ppm(cc, file = "tracer2.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
-            min = 0, max = 1, linear = true, map = cool_warm);
-  output_ppm(oxyy,file = "oxygen2.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
-            min = 0, max = 0.04, linear = true, map = cool_warm);
-  */
 
   // vorticity
   clear();
   view(width=1200,height=1200,fov=24.0,ty=0.0);
-  //draw_vof("cs",filled=-1,fc={1,1,1});
   draw_vof("f",lw=2);
-  //cells();
   squares("omega",map=cool_warm,min=-50.0,max=50.0);
-  //draw_vof("cs","fs");
+  draw_vof("cs","fs");
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
   save("vorticity3.mp4");
@@ -480,11 +373,10 @@ event movies_upgrade(t += dt_video; t<=t_end)
   // volume fraction
   clear();
   view(width=1200,height=1200,fov=24.0,ty=0.0);
-  //draw_vof("cs",filled=-1,fc={1,1,1});
   draw_vof("f",lw=2);
-  cells();
   squares("f",map=cool_warm,min=0.0,max=1.0);
-  //draw_vof("cs","fs");
+  draw_vof("cs","fs");
+  cells();
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
   save("volume_fraction3.mp4");
@@ -493,10 +385,9 @@ event movies_upgrade(t += dt_video; t<=t_end)
   // tracer
   clear();
   view(width=1200,height=1200,fov=24.0,ty=0.0);
-  //draw_vof("cs",filled=-1,fc={1,1,1});
   draw_vof("f",lw=2);
-  squares("c",map=cool_warm,min=0.0,max=1.0);
-  // draw_vof("cs","fs");
+  squares("c",map=cool_warm,min=0.0,max=0.1);
+  draw_vof("cs","fs");
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
   save("tracer3.mp4");
@@ -505,29 +396,15 @@ event movies_upgrade(t += dt_video; t<=t_end)
   // oxygen
   clear();
   view(width=1200,height=1200,fov=24.0,ty=0.0);
-  //draw_vof("cs",filled=-1,fc={1,1,1});
   draw_vof("f",lw=2);
   squares("oxy",map=cool_warm,min=0.0,max=0.04);
-  // draw_vof("cs","fs");
+  draw_vof("cs","fs");
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
   save("oxygen3.mp4");
   save("oxygen.png");
 }
 #endif
-
-/*
-event animationU (t += dt_video)
-{
-  view (tx = -0.4, ty = -0.4,  width = 500, height = 300, quat = {0, 0, 0.0, 0.0});
-  clear();
-  squares ("u.y", spread = -1, linear = true, map = cool_warm );   //draws colormap of field
-  draw_vof ("f", lc = {0.0,0.0,0.0}, lw=1);                        //draw interface (line colour and linewidth?)
-  box();
-  cells();
-  save ("HorizontalVelocity.mp4");
-}
-*/
 
 #if FIGURES
 event figures(i += i_fig; t <= t_end)
@@ -549,7 +426,7 @@ event figures(i += i_fig; t <= t_end)
 #if OUT_FILES
 event out_files(t+=dt_file; t<=t_end_file)
 {
-  /*
+  ///*
   snprintf(buf1, sizeof(buf1), "Data_all/Data_all_%d_%.9g_%d.txt",N,t,pid());
   FILE * out_all = fopen(buf1,"wb");  
     
@@ -557,14 +434,14 @@ event out_files(t+=dt_file; t<=t_end_file)
     fprintf(out_all,"%g %g %g %g %g %g %g %g\n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[]);
   }
   fclose(out_all);
-  */
-///*
+  //*/
+/*
   char name[80];
   sprintf(name,"Data_all/Output_%d_%.4g.dat",N,t);
   FILE * out_all2 = fopen(name,"w");
   output_field({u.x,u.y,f,c,cs,oxy},out_all2,n=N_output,linear=true);
   fclose(out_all2);
-//*/
+*/
 }
 #endif
 
