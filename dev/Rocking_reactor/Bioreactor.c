@@ -5,9 +5,15 @@
 #include "two-phase.h"
 #include "tension.h"
 #include "navier-stokes/conserving.h"
+// #include "/gpfs/scratch/mkim79/basilisk/henry_oxy2.h"
 #include "henry_oxy2.h"
-#include "view2.h"
-#include "tag.h"
+//#include "/gpfs/scratch/mkim79/basilisk/view2.h"
+//#include "view2.h"
+// #include "tag.h"
+// #include "/gpfs/scratch/mkim79/basilisk/utils2.h"
+#include "utils2.h"
+#define _USE_MATH_DEFINES
+#include <math.h>
 
 #define EMBED            1
 #define CONTACT          0
@@ -16,39 +22,46 @@
 #define OXYGEN_AIR       1
 #define TRACER           1
 #define ACCELERATION     1
-#define AMR              1
-#define REMOVE_DROP      1
+#define AMR              0
+#define REMOVE_DROP      0
 #define CFL_COND         0 
 #define DUMP             0
-#define FIGURES          0
-#define VIDEOS_original  0
-#define VIDEOS_new       1
+#define NORMCAL          1
+#define FIGURES          1
+#define VIDEOS_original  1
+#define VIDEOS_new       0   // this should be used with view.h
+#define FIGURES_new      0
 #define OUT_FILES        1
-#define OUT_FILES_REFINE 0
+#define OUT_SPECIFIC_TIME 1
+#define OUT_INTERFACE    1  // should be zero for multiple nodes (N>=1024)
 
 //&&& Simulation setup &&&//
-const double NN      = 512;     // resolution
-const double t_change= 12.1487; // change in rocking motion
+const double NN      = 64;     // resolution
+const double t_change= 6.8337; // change in rocking motion
 const double th_cont = 90;      // contact angle
-const double t_mix   = 25;      // time for releasing tracers
-const double t_dump  = 25;      // save the dump file
-const double t_end_file = 100; // t<t_end_file; saving freq=dt_file
-const double t_end   = 100;    // final time
-const double dt_file = 0.6074/2;   // saving frq before t_end_file
-const double dt_file_refine = 0.0281; // saving frq after t_end_file
+const double t_mix   = 24.3;     // time for releasing tracers
+const double t_dump  = 24.3;     // save the dump file
+const double t_end_file = 50; // t<t_end_file; saving freq=dt_file
+const double t_end   = 50;    // final time
+const double dt_file = 0.1519*7;   // saving frq before t_end_file
 const double dt_video= 0.6074/10;  // 0.0281
+const double dt_Fig  = 0.1519*7;  // same with the dt_file
+const double t_spec_init = 25;  // a half of the t_end
+const double t_spec_end  = 27;
+const double dt_spec     = 0.01519;  // 1/10 of dt_file
 const double dt_oxy  = 0.001;
-const int    i_fig   = 500;
-const double CFL_num = 0.1;    // CFL number
+const int    i_fig   = 1000;
+const int    i_norm  = 5;
+const double CFL_num = 0.01;    // CFL number
 const double N_output= 128;    // output resolution
 const double remove_minsize   = 20;
 const double remove_threshold = 1.0e-4;
 
-
 //&&& Reactor geometry &&&//
 double LL = 1.0;        // width
 double Ly = 0.286;      // 0.50; height
-double L_piv = 0.143;   // 0.25; distance to pivot point
+double y_init = 0.0; // -0.25*Ly; determine the filled liquid volume; y_init=0; a half volume
+double L_piv  = 0.143;      // 0.143; distance to pivot point
 
 //&&&&& Material properties &&&&&//
 const double rho_w = 1.0e3;   // kg/m^3
@@ -72,13 +85,13 @@ h.t[right] = contact_angle(th_cont*pi/180);
 #endif
 
 double Th_max, T_per, R_tr, x_tr, y_tr;
-scalar ft[], c[], oxy[];   // for tracer and oxygen transfer
-scalar * tracers = {ft}, * stracers = {c,oxy};
-char buf1[50], buf2[50], buf3[20], buf4[20], buf5[20], buf6[20];
+scalar c[], oxy[], c1[], c2[], c3[];   // for tracer and oxygen transfer
+scalar * stracers = {c,oxy,c1,c2,c3};
+char buf1[100], buf2[100], buf3[100];
 double (* gradient) (double, double, double) = minmod2;
 double U0, Ub, Re_w, Re_a, We_w, Fr, rhor, mur, Pe_tracer_1, Pe_tracer_2, Pe_oxy_1, Pe_oxy_2, Th, Th_d, Th_2d, U_bio, w_bio, w_bio_st, T_per_st, T_bio, Th_max2, D_in_non, U_in_non;
 int MINLEVEL, MAXLEVEL;
-FILE * fp_stats;
+FILE * fp_stats, * fp_norm, * fp_stats2, * fp_stats3;
 
 int main(int argc, char * argv[]){
 
@@ -120,10 +133,6 @@ int main(int argc, char * argv[]){
   U0     = w_bio_st*Th_max;     // initial velocity (clockwise)
   Ub     = 0.;                  // Boundary velocity
 
-  //dt_file = T_per_st/2;        // saving frq before t_end_file
-  //dt_file_refine = T_per_st/5; // saving frq after t_end_file
-  //dt_video= T_per_st/10;       // 0.0281
-
   //***** Dimensionless number *****//
   Re_w = rho_w*U_bio*L_bio/mu_w;
   Re_a = rho_a*U_bio*L_bio/mu_a;
@@ -154,12 +163,34 @@ int main(int argc, char * argv[]){
   
   //c.alpha = 1.0e30;  // c1 = alpha*c2
   c.alpha = c_tracer_alpha;
+
+  // slope limiter
+  c.gradient = minmod2;
+
+  // Other tracers: c1,c2,c3
+  /*
+  c1.D1 = 1./Pe_tracer_1;
+  c1.D2 = 1./Pe_tracer_2;
+  c1.alpha = c_tracer_alpha;
+  c1.gradient = minmod2;
+  c2.D1 = 1./Pe_tracer_1;
+  c2.D2 = 1./Pe_tracer_2;
+  c2.alpha = c_tracer_alpha;
+  c2.gradient = minmod2;
+  c3.D1 = 1./Pe_tracer_1;
+  c3.D2 = 1./Pe_tracer_2;
+  c3.alpha = c_tracer_alpha;
+  c3.gradient = minmod2;
+  */
 #endif
 
 #if OXYGEN
   oxy.D1 = 1./Pe_oxy_1;
   oxy.D2 = 1./Pe_oxy_2;
   oxy.alpha = c_oxy_alpha;
+
+  // slope limiter
+  oxy.gradient = minmod2;
 #endif
 
   //&&&&& Boundary conditions &&&&&//
@@ -177,28 +208,40 @@ int main(int argc, char * argv[]){
   u.t[embed] = dirichlet(0.);
 #endif
 
-  //***** Tracers: slope limiter *****//
-  c.gradient = minmod2;
-  oxy.gradient = minmod2;
+#if CFL_COND
+  CFL = CFL_num;
+#endif
   
-  char name[200];
+  char name[200],name2[200],name3[200],name4[200];
+
   sprintf(name, "logstats.dat");
+  sprintf(name2,"normf.dat");
+  sprintf(name3,"vol_frac_interf.dat");
+  sprintf(name4,"tr_oxy.dat");
   fp_stats = fopen(name, "w");
-  
+  fp_norm  = fopen(name2,"w");
+  fp_stats2= fopen(name3,"w");
+  fp_stats3= fopen(name4,"w");
+
+  fprintf(fp_norm, "i t Omega_liq_avg Omega_liq_rms Omega_liq_vol Omega_liq_max ux_liq_avg ux_liq_rms ux_liq_vol ux_liq_max uy_liq_avg uy_liq_rms uy_liq_vol uy_liq_max \n");
+  fprintf(fp_stats2, "i t f_liq_sum f_liq_interf posY_max posY_min \n");
+  //fprintf(fp_stats3, "i t oxy_liq_sum oxy_liq_sum2 c_liq_sum c_liq_sum2 c1_liq_sum c1_liq_sum2 c2_liq_sum c2_liq_sum2 c3_liq_sum c3_liq_sum2 \n");
+  fprintf(fp_stats3, "i t oxy_liq_sum oxy_liq_sum2 c_liq_sum c_liq_sum2 \n");
+
   // Iterations
-  NITERMAX = 300; 
-  TOLERANCE = 1.0e-4;
+  NITERMAX = 1000; 
+  TOLERANCE = 5.0e-4;
   
   run();
   
-  fclose(fp_stats);
+  fclose(fp_stats); fclose(fp_norm); fclose(fp_stats2); fclose(fp_stats3);
 }
 
 //***** Initial conditions  *****//
 event init (t = 0)
 {
   // Initial phases: y>0 -> volume fraction=0 (air); y<0 -> volume fraction=1
-  fraction (f, -y);
+  fraction (f, y_init-y);
 
   // solid
 #if EMBED
@@ -221,7 +264,22 @@ event CFL_cond(i++){
 
 #if TRACER
 event tracer(t = t_mix){
-  fraction(c, -(sq(x-x_tr) + sq(y-y_tr) - sq(R_tr)) );
+
+  double h_tr;
+
+  // tracer at the center of the initial liquid fill-out
+  //fraction(c, -(sq(x-x_tr) + sq(y-y_tr) - sq(R_tr)) );
+
+  // tracer at the center of the left-half side (same area)
+  //fraction(c1, -(sq(x+0.25) + sq(y-y_tr) - sq(R_tr)) );
+
+  // tracer at the center of the right-half side (same area)
+  //fraction(c2, -(sq(x-0.25) + sq(y-y_tr) - sq(R_tr)) );
+
+  h_tr = (M_PI*R_tr*R_tr);
+
+  // tracer released as a line (same area)
+  fraction(c, intersection( -(y-y_tr - 0.5*h_tr), -(-(y-y_tr + 0.5*h_tr)) ));
 }
 #endif
 
@@ -303,6 +361,81 @@ event logstats (t+=0.1; t <= t_end) {
     }
 }
 
+#if NORMCAL
+event normcal (i+=i_norm){
+  //timing s = timer_timing (perf.gt, i, perf.tnc, NULL);
+
+    scalar ux_liq[],uy_liq[],ux_liq_abs[],omega[],omega_liq[],oxy_liq[],f_liq[],posY[],c_liq[],c1_liq[],c2_liq[],c3_liq[];
+    double omega_liq_avg,omega_liq_rms,omega_liq_vol,omega_liq_max;
+    double ux_liq_avg,ux_liq_rms,ux_liq_vol,ux_liq_max,uy_liq_avg,uy_liq_rms,uy_liq_vol,uy_liq_max;
+    double f_liq_sum,f_liq_interf,posY_max,posY_min,oxy_liq_sum,oxy_liq_sum2,c_liq_sum,c_liq_sum2,c1_liq_sum,c1_liq_sum2,c2_liq_sum,c2_liq_sum2,c3_liq_sum,c3_liq_sum2;
+    
+    vorticity (u, omega); // vorticity
+
+    // only liquid velocity
+    foreach(){
+      ux_liq[]  = u.x[]*f[];
+      uy_liq[]  = u.y[]*f[];
+      oxy_liq[] = oxy[]*f[];
+      omega_liq[] = omega[]*f[];
+      f_liq[]   =  (1-cs[])*f[];
+      c_liq[]   = c[]*f[];
+      /*
+      c1_liq[]  = c1[]*f[];
+      c2_liq[]  = c2[]*f[];
+      c3_liq[]  = c3[]*f[];
+      */
+    }
+
+    position (f, posY, {0,1,0});  // (0,1,0) indicates the unit vector in the y-direction
+
+    omega_liq_avg = normf(omega_liq).avg;
+    omega_liq_rms = normf(omega_liq).rms;
+    omega_liq_vol = normf(omega_liq).volume;
+    omega_liq_max = normf(omega_liq).max;
+    ux_liq_avg    = normf(ux_liq).avg;
+    ux_liq_rms    = normf(ux_liq).rms;
+    ux_liq_vol    = normf(ux_liq).volume;
+    ux_liq_max    = normf(ux_liq).max;
+    uy_liq_avg    = normf(uy_liq).avg;
+    uy_liq_rms    = normf(uy_liq).rms;
+    uy_liq_vol    = normf(uy_liq).volume;
+    uy_liq_max    = normf(uy_liq).max;
+    
+    f_liq_sum     = statsf2(f_liq).sum;
+    f_liq_interf  = interface_area(f);
+    posY_max      = statsf(posY).max;
+    posY_min      = statsf(posY).min;
+
+    oxy_liq_sum   = statsf2(oxy_liq).sum;
+    oxy_liq_sum2  = statsf2(oxy_liq).sum2;
+    c_liq_sum     = statsf2(c_liq).sum;
+    c_liq_sum2    = statsf2(c_liq).sum2;
+    /*
+    c1_liq_sum    = statsf(c1_liq).sum;
+    c1_liq_sum2   = statsf2(c1_liq).sum2;
+    c2_liq_sum    = statsf(c2_liq).sum;
+    c2_liq_sum2   = statsf2(c2_liq).sum2;
+    c3_liq_sum    = statsf(c3_liq).sum;
+    c3_liq_sum2   = statsf2(c3_liq).sum2;
+    */
+
+   // i, timestep, no of cells, real time elapsed, cpu time
+   if (pid() == 0){
+      
+      fprintf(fp_norm, "%i %g %g %g %g %g %g %g %g %g %g %g %g %g \n",i,t,omega_liq_avg,omega_liq_rms,omega_liq_vol,omega_liq_max,ux_liq_avg,ux_liq_rms,ux_liq_vol,ux_liq_max,uy_liq_avg,uy_liq_rms,uy_liq_vol,uy_liq_max);
+      fflush(fp_norm);
+
+      fprintf(fp_stats2, "%i %g %g %g %g %g \n",i,t,f_liq_sum,f_liq_interf,posY_max,posY_min);
+      fflush(fp_stats2);
+
+      //fprintf(fp_stats3, "%i %g %g %g %g %g %g %g %g %g %g %g \n",i,t,oxy_liq_sum,oxy_liq_sum2,c_liq_sum,c_liq_sum2,c1_liq_sum,c1_liq_sum2,c2_liq_sum,c2_liq_sum2,c3_liq_sum,c3_liq_sum2);
+      fprintf(fp_stats3, "%i %g %g %g %g %g \n",i,t,oxy_liq_sum,oxy_liq_sum2,c_liq_sum,c_liq_sum2);
+      fflush(fp_stats3);
+   }
+}
+#endif
+
 /*
 //event gfsview (t += 50.0) {
 event gfsview (t += 0.1) {
@@ -334,17 +467,23 @@ event movies(t += dt_video; t<=t_end)
   scalar omega[], cc[], oxyy[];
   vorticity (u, omega);
   
-  output_ppm(omega, file = "vorticity.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
-	     min = -50, max = 50, linear = true, map = cool_warm);
+  //output_ppm(omega, file = "vorticity.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
+	//    min = -50, max = 50, linear = true, map = cool_warm);
   //output_ppm(u.x, file = "x-vel.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
   //	     min = -0.1, max = 0.1, linear = true, map = cool_warm);
   //output_ppm(u.y, file = "y-vel.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
   //  	     min = -0.1, max = 0.1, linear = true, map = cool_warm);  
-  //output_ppm(f, file = "vol_fraction.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
-//	     min = 0.0, max = 1.0, linear = true, map = cool_warm);
+  output_ppm(f, file = "vol_fraction.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
+	     min = 0.0, max = 1.0, linear = true, map = cool_warm);
   //output_ppm(ft, file = "tracer.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
   //	     linear = true, map = cool_warm);
-  //output_ppm(cc, file = "tracer.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
+  //output_ppm(c, file = "tracer.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
+  //	     min = 0, max = 1, linear = true, map = cool_warm);  
+  //output_ppm(c1, file = "tracer1.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
+  //	     min = 0, max = 1, linear = true, map = cool_warm);  
+  //output_ppm(c2, file = "tracer2.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
+  //	     min = 0, max = 1, linear = true, map = cool_warm);  
+  //output_ppm(c3, file = "tracer3.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
   //	     min = 0, max = 1, linear = true, map = cool_warm);  
   //output_ppm(oxyy,file = "oxygen.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
 //	     min = 0, max = 0.04, linear = true, map = cool_warm);
@@ -376,7 +515,7 @@ event movies_upgrade(t += dt_video; t<=t_end)
   draw_vof("f",lw=2);
   squares("f",map=cool_warm,min=0.0,max=1.0);
   draw_vof("cs","fs");
-  cells();
+  //cells();
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
   save("volume_fraction3.mp4");
@@ -390,10 +529,44 @@ event movies_upgrade(t += dt_video; t<=t_end)
   draw_vof("cs","fs");
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
-  save("tracer3.mp4");
+  save("tracer.mp4");
   save("tracer.png");
+/*
+  // tracer1
+  clear();
+  view(width=1200,height=1200,fov=24.0,ty=0.0);
+  draw_vof("f",lw=2);
+  squares("c1",map=cool_warm,min=0.0,max=0.1);
+  draw_vof("cs","fs");
+  sprintf(timestring,"t=%2.03fs",t*T_bio);
+  draw_string(timestring,pos=4,lc={0,0,0},lw=2);
+  save("tracer1.mp4");
+  save("tracer1.png");
 
+  // tracer2
+  clear();
+  view(width=1200,height=1200,fov=24.0,ty=0.0);
+  draw_vof("f",lw=2);
+  squares("c2",map=cool_warm,min=0.0,max=0.1);
+  draw_vof("cs","fs");
+  sprintf(timestring,"t=%2.03fs",t*T_bio);
+  draw_string(timestring,pos=4,lc={0,0,0},lw=2);
+  save("tracer2.mp4");
+  save("tracer2.png");
+
+  // tracer3
+  clear();
+  view(width=1200,height=1200,fov=24.0,ty=0.0);
+  draw_vof("f",lw=2);
+  squares("c3",map=cool_warm,min=0.0,max=0.1);
+  draw_vof("cs","fs");
+  sprintf(timestring,"t=%2.03fs",t*T_bio);
+  draw_string(timestring,pos=4,lc={0,0,0},lw=2);
+  save("tracer3.mp4");
+  save("tracer3.png");
+*/
   // oxygen
+  #if OXYGEN
   clear();
   view(width=1200,height=1200,fov=24.0,ty=0.0);
   draw_vof("f",lw=2);
@@ -403,6 +576,67 @@ event movies_upgrade(t += dt_video; t<=t_end)
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
   save("oxygen3.mp4");
   save("oxygen.png");
+  #endif
+}
+#endif
+
+#if FIGURES_new
+event Figures_new(t=t_mix; t<=t_end; t += dt_Fig)
+{
+  scalar omega[];
+  char timestring[100],figN1[100],figN2[100],figN3[100],figN4[100];
+  
+  vorticity (u,omega);
+  
+  snprintf(figN1, sizeof(figN1), "Fig_vor/vor_%d_%.9g.png",N,t);
+  snprintf(figN2, sizeof(figN2), "Fig_vol/vor_%d_%.9g.png",N,t);
+  snprintf(figN3, sizeof(figN3), "Fig_tr/vor_%d_%.9g.png",N,t);
+  snprintf(figN4, sizeof(figN4), "Fig_oxy/vor_%d_%.9g.png",N,t);
+
+  // vorticity
+  clear();
+  view(width=1200,height=1200,fov=24.0,ty=0.0);
+  draw_vof("f",lw=2);
+  squares("omega",map=cool_warm,min=-50.0,max=50.0);
+  draw_vof("cs","fs");
+  sprintf(timestring,"t=%2.03fs",t*T_bio);
+  draw_string(timestring,pos=4,lc={0,0,0},lw=2);
+  save(figN1);
+
+  // volume fraction
+  clear();
+  view(width=1200,height=1200,fov=24.0,ty=0.0);
+  draw_vof("f",lw=2);
+  squares("f",map=cool_warm,min=0.0,max=1.0);
+  draw_vof("cs","fs");
+  //cells();
+  sprintf(timestring,"t=%2.03fs",t*T_bio);
+  draw_string(timestring,pos=4,lc={0,0,0},lw=2);
+  save(figN2);
+
+  // tracer
+  #if TRACER
+  clear();
+  view(width=1200,height=1200,fov=24.0,ty=0.0);
+  draw_vof("f",lw=2);
+  squares("c",map=cool_warm,min=0.0,max=0.1);
+  draw_vof("cs","fs");
+  sprintf(timestring,"t=%2.03fs",t*T_bio);
+  draw_string(timestring,pos=4,lc={0,0,0},lw=2);
+  save(figN3);
+  #endif
+  
+  // oxygen
+  #if OXYGEN
+  clear();
+  view(width=1200,height=1200,fov=24.0,ty=0.0);
+  draw_vof("f",lw=2);
+  squares("oxy",map=cool_warm,min=0.0,max=0.04);
+  draw_vof("cs","fs");
+  sprintf(timestring,"t=%2.03fs",t*T_bio);
+  draw_string(timestring,pos=4,lc={0,0,0},lw=2);
+  save(figN4);
+  #endif
 }
 #endif
 
@@ -412,27 +646,39 @@ event figures(i += i_fig; t <= t_end)
   scalar omega[];
   vorticity (u,omega);
   
-  output_ppm(c, file = "tracer.png");
   output_ppm(f, file = "vol_frac.png");
-  //output_ppm(ft, file = "tracer.png");
-  output_ppm(omega, file="vorticity.png");
+  #if TRACER
+  output_ppm(c, file = "tracer.png");
+  /*
+  output_ppm(c1, file = "tracer1.png");
+  output_ppm(c2, file = "tracer2.png");
+  output_ppm(c3, file = "tracer3.png");
+  */
+  #endif
+  //output_ppm(omega, file="vorticity.png");
   //output_ppm(u.x, file="x-vel.png");
   //output_ppm(u.y, file="y-vel.png");
   //output_ppm( cs, file="solid.png");
+  #if OXYGEN
   output_ppm(oxy, file="oxygen.png");
+  #endif
 }
 #endif
 
 #if OUT_FILES
 event out_files(t+=dt_file; t<=t_end_file)
 {
+  scalar omega[];
+  vorticity(u,omega);
+
   ///*
   snprintf(buf1, sizeof(buf1), "Data_all/Data_all_%d_%.9g_%d.txt",N,t,pid());
   FILE * out_all = fopen(buf1,"wb");  
-    
-  foreach(){
-    fprintf(out_all,"%g %g %g %g %g %g %g %g\n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[]);
-  }
+
+  fprintf(out_all,"x y ux uy vol_frac tracer solid oxygen vorticity \n");
+  foreach()
+    //fprintf(out_all,"%g %g %g %g %g %g %g %g %g %g %g\n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[],c1[],c2[],c3[]);
+    fprintf(out_all,"%g %g %g %g %g %g %g %g %g \n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[],omega[]);
   fclose(out_all);
   //*/
 /*
@@ -445,21 +691,26 @@ event out_files(t+=dt_file; t<=t_end_file)
 }
 #endif
 
-#if OUT_FILES_REFINE
-event out_files_refine(t+=dt_file_refine; t<=t_end)
+#if OUT_SPECIFIC_TIME
+event out_spec_time(t=t_spec_init; t<=t_spec_end; t+=dt_spec)
 {
-  if (t >= t_end_file){
-    snprintf(buf1, sizeof(buf1), "Data_all/Data_all_%d_%.9g_%d.txt",N,t,pid());
-    //snprintf(buf2, sizeof(buf2), "alpha_%g.txt",t);
-    FILE * out_all = fopen(buf1,"wb");
-    //FILE * interf = fopen(buf2,"w");  
-    
-    foreach(){
-      fprintf(out_all,"%g %g %g %g %g %g %g %g\n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[]);
-    }
-    //output_facets(f,interf);
-  
-    fclose(out_all);  //fclose(interf);
-  }
+  scalar omega[];
+  vorticity(u,omega);
+
+  snprintf(buf2, sizeof(buf2), "Data_specific/Data_all_%d_%.9g_%d.txt",N,t,pid());
+  FILE * out_all_spec = fopen(buf2,"wb");  
+
+  fprintf(out_all_spec,"x y ux uy vol_frac tracer solid oxygen vorticity \n");
+  foreach()
+    fprintf(out_all_spec,"%g %g %g %g %g %g %g %g %g \n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[],omega[]);
+  fclose(out_all_spec);
+
+  // Only works for single node; for multiiple nodes, this should be turned off
+  #if OUT_INTERFACE
+    snprintf(buf3, sizeof(buf3), "Data_specific/Interf_%d_%.9g_%d.txt",N,t,pid());
+    FILE * out_interf_spec = fopen(buf3,"wb");
+    output_facets(f,out_interf_spec);   // Interface extraction
+    fclose(out_interf_spec);
+  #endif
 }
 #endif
