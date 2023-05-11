@@ -423,7 +423,8 @@ static pointer compose_image (bview * view)
 
 Drawing user functions are defined in [draw.h](). */
 
-#include "/gpfs/scratch/mkim79/basilisk/draw2.h"
+// #include "/gpfs/scratch/mkim79/basilisk/draw2.h"
+#include "draw2.h"
 
 /**
 ## *load()*: read drawing commands from a file or buffer
