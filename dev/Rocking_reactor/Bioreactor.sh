@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NAME='Drop107'
+NAME='Drop103'
 
 # We're using a uniform grid; MIN_LEVEL and MAX_LEVEL aren't used in the simulation.
 for MIN_LEVEL in 9; do
@@ -20,6 +20,6 @@ for MIN_LEVEL in 9; do
 	# 4. MINLEVEL
 	# 5. MAXLEVEL	
 	
-	./$NAME 0.25 7 37.5 $MIN_LEVEL $MAX_LEVEL
+	./$NAME 0.25 7 32.5 $MIN_LEVEL $MAX_LEVEL
     done
 done
