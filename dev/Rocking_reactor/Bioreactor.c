@@ -33,7 +33,7 @@
 
 //&&& Simulation setup &&&//
 const double NN      = 512;     // resolution
-const double t_change= 9.8708; // change in rocking motion
+const double t_change= 30;      // sec; reached a regular motion at t_change
 const double th_cont = 90;      // contact angle
 const double t_mix   = 24.3;     // time for releasing tracers
 const double t_dump  = 24.3;     // save the dump file
@@ -85,7 +85,7 @@ scalar c[], oxy[], c1[], c2[], c3[];   // for tracer and oxygen transfer
 scalar * stracers = {c,oxy,c1,c2,c3};
 char buf1[100], buf2[100], buf3[100], buf4[100];
 double (* gradient) (double, double, double) = minmod2;
-double U0, Ub, Re_w, Re_a, We_w, Fr, rhor, mur, Pe_tracer_1, Pe_tracer_2, Pe_oxy_1, Pe_oxy_2, Th, Th_d, Th_2d, U_bio, w_bio, w_bio_st, T_per_st, T_bio, Th_max2, D_in_non, U_in_non;
+double U0, Ub, Re_w, Re_a, We_w, Fr, rhor, mur, Pe_tracer_1, Pe_tracer_2, Pe_oxy_1, Pe_oxy_2, Th, Th_d, Th_2d, U_bio, w_bio, w_bio_st, T_per_st, T_bio, Th_max2, D_in_non, U_in_non, t_change_st;
 int MINLEVEL, MAXLEVEL;
 FILE * fp_stats, * fp_norm, * fp_stats2, * fp_stats3;
 
@@ -128,6 +128,7 @@ int main(int argc, char * argv[]){
   T_per_st = T_per/T_bio;       // dimensionless rocking period
   U0     = w_bio_st*Th_max;     // initial velocity (clockwise)
   Ub     = 0.;                  // Boundary velocity
+  t_change_st = t_change/T_bio; // time for changing the mode to the regular amplitude motion
 
   //***** Dimensionless number *****//
   Re_w = rho_w*U_bio*L_bio/mu_w;
@@ -301,14 +302,14 @@ event oxygen (t=t_mix; i++){
 event acceleration(i++)
 {
   // initial stage
-  if (t >= t_change){
+  if (t >= t_change_st){
     Th    = Th_max*sin(w_bio_st*t);
     Th_d  = w_bio_st*Th_max*cos(w_bio_st*t);
     Th_2d = -w_bio_st*w_bio_st*Th_max*sin(w_bio_st*t);
   }
   // regular state
-  else if (t < t_change){
-    Th_max2 = (Th_max-0)/(t_change-0)*t;
+  else if (t < t_change_st){
+    Th_max2 = (Th_max-0)/(t_change_st-0)*t;
     Th    = Th_max2*sin(w_bio_st*t);
     Th_d  = w_bio_st*Th_max2*cos(w_bio_st*t);
     Th_2d = -w_bio_st*w_bio_st*Th_max2*sin(w_bio_st*t);
