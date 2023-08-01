@@ -5,12 +5,8 @@
 #include "two-phase.h"
 #include "tension.h"
 #include "navier-stokes/conserving.h"
-// #include "/gpfs/scratch/mkim79/basilisk/henry_oxy2.h"
 #include "henry_oxy2.h"
-//#include "/gpfs/scratch/mkim79/basilisk/view2.h"
-//#include "view2.h"
-// #include "tag.h"
-// #include "/gpfs/scratch/mkim79/basilisk/utils2.h"
+#include "view2.h"
 #include "utils2.h"
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -27,28 +23,28 @@
 #define CFL_COND         0 
 #define DUMP             0
 #define NORMCAL          1
-#define FIGURES          1
-#define VIDEOS_original  1
-#define VIDEOS_new       0   // this should be used with view.h
-#define FIGURES_new      0
+#define FIGURES          0
+#define VIDEOS_original  0
+#define VIDEOS_new       1
+#define FIGURES_new      1
 #define OUT_FILES        1
 #define OUT_SPECIFIC_TIME 1
 #define OUT_INTERFACE    1  // should be zero for multiple nodes (N>=1024)
 
 //&&& Simulation setup &&&//
-const double NN      = 64;     // resolution
-const double t_change= 6.8337; // change in rocking motion
+const double NN      = 512;     // resolution
+const double t_change= 9.8708; // change in rocking motion
 const double th_cont = 90;      // contact angle
 const double t_mix   = 24.3;     // time for releasing tracers
 const double t_dump  = 24.3;     // save the dump file
-const double t_end_file = 50; // t<t_end_file; saving freq=dt_file
-const double t_end   = 50;    // final time
+const double t_end_file = 1200; // t<t_end_file; saving freq=dt_file
+const double t_end   = 1200;    // final time
 const double dt_file = 0.1519*7;   // saving frq before t_end_file
 const double dt_video= 0.6074/10;  // 0.0281
 const double dt_Fig  = 0.1519*7;  // same with the dt_file
-const double t_spec_init = 25;  // a half of the t_end
-const double t_spec_end  = 27;
-const double dt_spec     = 0.01519;  // 1/10 of dt_file
+const double t_spec_init = 24.3;  // a half of the t_end
+const double t_spec_end  = 30;
+const double dt_spec     = 0.1519;  // 1/10 of dt_file
 const double dt_oxy  = 0.001;
 const int    i_fig   = 1000;
 const int    i_norm  = 5;
@@ -60,7 +56,7 @@ const double remove_threshold = 1.0e-4;
 //&&& Reactor geometry &&&//
 double LL = 1.0;        // width
 double Ly = 0.286;      // 0.50; height
-double y_init = 0.0; // -0.25*Ly; determine the filled liquid volume; y_init=0; a half volume
+double y_init = 0.0;  // -0.25*Ly; determine the filled liquid volume; y_init=0; a half volume
 double L_piv  = 0.143;      // 0.143; distance to pivot point
 
 //&&&&& Material properties &&&&&//
@@ -87,7 +83,7 @@ h.t[right] = contact_angle(th_cont*pi/180);
 double Th_max, T_per, R_tr, x_tr, y_tr;
 scalar c[], oxy[], c1[], c2[], c3[];   // for tracer and oxygen transfer
 scalar * stracers = {c,oxy,c1,c2,c3};
-char buf1[100], buf2[100], buf3[100];
+char buf1[100], buf2[100], buf3[100], buf4[100];
 double (* gradient) (double, double, double) = minmod2;
 double U0, Ub, Re_w, Re_a, We_w, Fr, rhor, mur, Pe_tracer_1, Pe_tracer_2, Pe_oxy_1, Pe_oxy_2, Th, Th_d, Th_2d, U_bio, w_bio, w_bio_st, T_per_st, T_bio, Th_max2, D_in_non, U_in_non;
 int MINLEVEL, MAXLEVEL;
@@ -681,6 +677,15 @@ event out_files(t+=dt_file; t<=t_end_file)
     fprintf(out_all,"%g %g %g %g %g %g %g %g %g \n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[],omega[]);
   fclose(out_all);
   //*/
+
+  // Only works for single node; for multiiple nodes, this should be turned off
+  #if OUT_INTERFACE
+    snprintf(buf4, sizeof(buf4), "Data_all/Interf_%d_%.9g_%d.txt",N,t,pid());
+    FILE * out_interf = fopen(buf4,"wb");
+    output_facets(f,out_interf);   // Interface extraction
+    fclose(out_interf);
+  #endif
+
 /*
   char name[80];
   sprintf(name,"Data_all/Output_%d_%.4g.dat",N,t);
