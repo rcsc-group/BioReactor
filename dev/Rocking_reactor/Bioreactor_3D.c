@@ -40,19 +40,19 @@
 #define OUT_INTERFACE    1  // should be zero for multiple nodes (N>=1024)
 
 //&&& Simulation setup &&&//
-const double NN      = 64;     // resolution New for 3D run, lowered for testing
-const double t_change= 6.8337; // change in rocking motion
+const double NN      = 128;     // resolution - level 7 for testing only
+const double t_change= 30;      // sec; reached a regular motion at t_change
 const double th_cont = 90;      // contact angle
-const double t_mix   = 0.3; //24.3;     // time for releasing tracers
-const double t_dump  = 0.3; //24.3;     // save the dump file
-const double t_end_file = 50; // t<t_end_file; saving freq=dt_file
-const double t_end   = 50;    // final time
+const double t_mix   = 24.3;     // time for releasing tracers
+const double t_dump  = 24.3;     // save the dump file
+const double t_end_file = 100; // t<t_end_file; saving freq=dt_file
+const double t_end   = 100;    // final time, reduced to 100 units to focus on hydrodynamic aspects, but still retain mixing and oxygen transfer functionality
 const double dt_file = 0.1519*7;   // saving frq before t_end_file
 const double dt_video= 0.6074/10;  // 0.0281
 const double dt_Fig  = 0.1519*7;  // same with the dt_file
-const double t_spec_init = 25;  // a half of the t_end
-const double t_spec_end  = 27;
-const double dt_spec     = 0.01519;  // 1/10 of dt_file
+const double t_spec_init = 24.3;  // a half of the t_end
+const double t_spec_end  = 30;
+const double dt_spec     = 0.1519;  // 1/10 of dt_file
 const double dt_oxy  = 0.001;
 const int    i_fig   = 1000;
 const int    i_norm  = 5;
@@ -294,6 +294,7 @@ event tracer(t = t_mix){
   h_tr = (M_PI*R_tr*R_tr);
 
   // tracer released as a line (same area)
+  // New for 3D - was not obvious if we wanted to change this for the 3D problem, please have a look
   fraction(c, intersection( -(y-y_tr - 0.5*h_tr), -(-(y-y_tr + 0.5*h_tr)) ));
 }
 #endif
@@ -367,6 +368,7 @@ event dump(t=t_dump){
 }
 #endif
 
+// New for 3D run: useful for performance measurement in general
 event logstats (t+=0.1; t <= t_end) {
 
     timing s = timer_timing (perf.gt, i, perf.tnc, NULL);
@@ -378,11 +380,14 @@ event logstats (t+=0.1; t <= t_end) {
     }
 }
 
+// New for 3D run: global variables for some of the key quantities to avoid re-definition and allow inspection via GfsView3D
+scalar omega[];
+
 #if NORMCAL
 event normcal (i+=i_norm){
   //timing s = timer_timing (perf.gt, i, perf.tnc, NULL);
 
-    scalar ux_liq[],uy_liq[],uz_liq[],ux_liq_abs[],omega[],omega_liq[],oxy_liq[],f_liq[],posY[],c_liq[],c1_liq[],c2_liq[],c3_liq[]; // New for 3D run
+    scalar ux_liq[],uy_liq[],uz_liq[],ux_liq_abs[],omega_liq[],oxy_liq[],f_liq[],posY[],c_liq[],c1_liq[],c2_liq[],c3_liq[]; // New for 3D run
     double omega_liq_avg,omega_liq_rms,omega_liq_vol,omega_liq_max;
     double ux_liq_avg,ux_liq_rms,ux_liq_vol,ux_liq_max,uy_liq_avg,uy_liq_rms,uy_liq_vol,uy_liq_max,uz_liq_avg,uz_liq_rms,uz_liq_vol,uz_liq_max; // New for 3D run
     double f_liq_sum,f_liq_interf,posY_max,posY_min,oxy_liq_sum,oxy_liq_sum2,c_liq_sum,c_liq_sum2,c1_liq_sum,c1_liq_sum2,c2_liq_sum,c2_liq_sum2,c3_liq_sum,c3_liq_sum2;
@@ -468,8 +473,7 @@ event gfsview (t += 1.0) {
     fclose(fp_gfs);
 }
 
-/*
-event saveInterfaces (t += 10.0) {
+event saveInterfaces (t += 0.1) {
 
     char nameInterfaces1[200];
 
@@ -479,13 +483,12 @@ event saveInterfaces (t += 10.0) {
     output_facets (f, fp1);	
     fclose(fp1);
 }
-*/
 
 #if VIDEOS_original 
 //***** Animations
 event movies(t += dt_video; t<=t_end)
 {
-  scalar omega[], cc[], oxyy[];
+
   vorticity (u, omega);
   
   //output_ppm(omega, file = "vorticity.mp4", box = { {-L0/2,-L0/2},{L0,L0} },
@@ -514,7 +517,7 @@ event movies(t += dt_video; t<=t_end)
 #if VIDEOS_new
 event movies_upgrade(t += dt_video; t<=t_end)
 {
-  scalar omega[], ff[], cc[], oxyy[];
+  
   char timestring[100];
 
   vorticity (u,omega);
@@ -604,7 +607,6 @@ event movies_upgrade(t += dt_video; t<=t_end)
 #if FIGURES_new
 event Figures_new(t=t_mix; t<=t_end; t += dt_Fig)
 {
-  scalar omega[];
   char timestring[100],figN1[100],figN2[100],figN3[100],figN4[100];
   
   vorticity (u,omega);
@@ -664,7 +666,6 @@ event Figures_new(t=t_mix; t<=t_end; t += dt_Fig)
 #if FIGURES
 event figures(i += i_fig; t <= t_end)
 {
-  scalar omega[];
   vorticity (u,omega);
   
   output_ppm(f, file = "vol_frac.png");
@@ -689,7 +690,7 @@ event figures(i += i_fig; t <= t_end)
 #if OUT_FILES
 event out_files(t+=dt_file; t<=t_end_file)
 {
-  scalar omega[];
+
   vorticity(u,omega);
 
   ///*
@@ -715,7 +716,6 @@ event out_files(t+=dt_file; t<=t_end_file)
 #if OUT_SPECIFIC_TIME
 event out_spec_time(t=t_spec_init; t<=t_spec_end; t+=dt_spec)
 {
-  scalar omega[];
   vorticity(u,omega);
 
   snprintf(buf2, sizeof(buf2), "Data_specific/Data_all_%d_%.9g_%d.txt",N,t,pid());
