@@ -5,49 +5,59 @@
 #include "two-phase.h"
 #include "tension.h"
 #include "navier-stokes/conserving.h"
+//#include "/oscar/scratch/mkim79/basilisk/henry_oxy2.h"
 #include "henry_oxy2.h"
+//#include "/oscar/scratch/mkim79/basilisk/view3.h"
 #include "view2.h"
+// #include "tag.h"
+//#include "/oscar/scratch/mkim79/basilisk/utils2.h"
 #include "utils2.h"
 #define _USE_MATH_DEFINES
 #include <math.h>
 
 #define EMBED            1
 #define CONTACT          0
-#define OXYGEN           1
+#define OXYGEN           0
 #define OXYGEN_CIRCLE    0
-#define OXYGEN_AIR       1
+#define OXYGEN_AIR       0
 #define TRACER           1
+#define HORIZONTAL_MIXL  0
+#define HORIZONTAL_MIXR  0
+#define VERTICAL_MIXUP   1
+#define VERTICAL_MIXDOWN 0
 #define ACCELERATION     1
 #define AMR              0
 #define REMOVE_DROP      0
 #define CFL_COND         0 
 #define DUMP             0
 #define NORMCAL          1
-#define FIGURES          0
+#define FIGURES          0 
 #define VIDEOS_original  0
-#define VIDEOS_new       1
+#define VIDEOS_new       0
 #define FIGURES_new      1
 #define OUT_FILES        1
-#define OUT_SPECIFIC_TIME 1
+#define OUT_SPECIFIC_TIME 0
 #define OUT_INTERFACE    1  // should be zero for multiple nodes (N>=1024)
 
 //&&& Simulation setup &&&//
-const double NN      = 512;     // resolution
-const double t_change= 30;      // sec; reached a regular motion at t_change
+const double NN      = 2048;     // resolution
+const double t_change= 10;      // sec; reached a regular motion at t_change
 const double th_cont = 90;      // contact angle
-const double t_mix   = 24.3;     // time for releasing tracers
-const double t_dump  = 24.3;     // save the dump file
-const double t_end_file = 1200; // t<t_end_file; saving freq=dt_file
-const double t_end   = 1200;    // final time
+//const double t_mix   = 0;     // time for releasing tracers
+double t_mix,t_dump;
+const double nMix_cycle = 50; 
+const double t_end_file = 200; // t<t_end_file; saving freq=dt_file
+const double t_end   = 200;    // final time
 const double dt_file = 0.1519*7;   // saving frq before t_end_file
 const double dt_video= 0.6074/10;  // 0.0281
 const double dt_Fig  = 0.1519*7;  // same with the dt_file
-const double t_spec_init = 24.3;  // a half of the t_end
-const double t_spec_end  = 30;
-const double dt_spec     = 0.1519;  // 1/10 of dt_file
+// const double t_spec_init = 300;  // a half of the t_end
+// const double t_spec_end  = 300;
+double t_spec_init, t_spec_end;
+const double dt_spec     = 0.006074;  // 1/10 of dt_file
 const double dt_oxy  = 0.001;
-const int    i_fig   = 1000;
-const int    i_norm  = 5;
+const int    i_fig   = 5000;
+const int    i_norm  = 50;
 const double CFL_num = 0.01;    // CFL number
 const double N_output= 128;    // output resolution
 const double remove_minsize   = 20;
@@ -85,7 +95,7 @@ scalar c[], oxy[], c1[], c2[], c3[];   // for tracer and oxygen transfer
 scalar * stracers = {c,oxy,c1,c2,c3};
 char buf1[100], buf2[100], buf3[100], buf4[100];
 double (* gradient) (double, double, double) = minmod2;
-double U0, Ub, Re_w, Re_a, We_w, Fr, rhor, mur, Pe_tracer_1, Pe_tracer_2, Pe_oxy_1, Pe_oxy_2, Th, Th_d, Th_2d, U_bio, w_bio, w_bio_st, T_per_st, T_bio, Th_max2, D_in_non, U_in_non, t_change_st;
+double U0, Ub, Re_w, Re_a, We_w, Fr, rhor, mur, Pe_tracer_1, Pe_tracer_2, Pe_oxy_1, Pe_oxy_2, Th, Th_d, Th_2d, U_bio, w_bio, w_bio_st, T_per_st, T_bio, Th_max2, D_in_non, U_in_non, t_change_st, t_mix_st;
 int MINLEVEL, MAXLEVEL;
 FILE * fp_stats, * fp_norm, * fp_stats2, * fp_stats3;
 
@@ -129,6 +139,10 @@ int main(int argc, char * argv[]){
   U0     = w_bio_st*Th_max;     // initial velocity (clockwise)
   Ub     = 0.;                  // Boundary velocity
   t_change_st = t_change/T_bio; // time for changing the mode to the regular amplitude motion
+  t_mix      = T_per_st*nMix_cycle;
+  t_dump = t_mix;
+  t_spec_init= t_mix;
+  t_spec_end = T_per_st*(nMix_cycle+10);
 
   //***** Dimensionless number *****//
   Re_w = rho_w*U_bio*L_bio/mu_w;
@@ -165,7 +179,7 @@ int main(int argc, char * argv[]){
   c.gradient = minmod2;
 
   // Other tracers: c1,c2,c3
-  /*
+  ///*
   c1.D1 = 1./Pe_tracer_1;
   c1.D2 = 1./Pe_tracer_2;
   c1.alpha = c_tracer_alpha;
@@ -178,7 +192,7 @@ int main(int argc, char * argv[]){
   c3.D2 = 1./Pe_tracer_2;
   c3.alpha = c_tracer_alpha;
   c3.gradient = minmod2;
-  */
+  //*/
 #endif
 
 #if OXYGEN
@@ -222,8 +236,8 @@ int main(int argc, char * argv[]){
 
   fprintf(fp_norm, "i t Omega_liq_avg Omega_liq_rms Omega_liq_vol Omega_liq_max ux_liq_avg ux_liq_rms ux_liq_vol ux_liq_max uy_liq_avg uy_liq_rms uy_liq_vol uy_liq_max \n");
   fprintf(fp_stats2, "i t f_liq_sum f_liq_interf posY_max posY_min \n");
-  //fprintf(fp_stats3, "i t oxy_liq_sum oxy_liq_sum2 c_liq_sum c_liq_sum2 c1_liq_sum c1_liq_sum2 c2_liq_sum c2_liq_sum2 c3_liq_sum c3_liq_sum2 \n");
-  fprintf(fp_stats3, "i t oxy_liq_sum oxy_liq_sum2 c_liq_sum c_liq_sum2 \n");
+  fprintf(fp_stats3, "i t oxy_liq_sum oxy_liq_sum2 c_liq_sum c_liq_sum2 c1_liq_sum c1_liq_sum2 c2_liq_sum c2_liq_sum2 c3_liq_sum c3_liq_sum2 \n");
+  // fprintf(fp_stats3, "i t oxy_liq_sum oxy_liq_sum2 c_liq_sum c_liq_sum2 \n");
 
   // Iterations
   NITERMAX = 1000; 
@@ -265,7 +279,7 @@ event tracer(t = t_mix){
   double h_tr;
 
   // tracer at the center of the initial liquid fill-out
-  //fraction(c, -(sq(x-x_tr) + sq(y-y_tr) - sq(R_tr)) );
+  // fraction(c, -(sq(x-x_tr) + sq(y-y_tr) - sq(R_tr)) );
 
   // tracer at the center of the left-half side (same area)
   //fraction(c1, -(sq(x+0.25) + sq(y-y_tr) - sq(R_tr)) );
@@ -276,7 +290,46 @@ event tracer(t = t_mix){
   h_tr = (M_PI*R_tr*R_tr);
 
   // tracer released as a line (same area)
-  fraction(c, intersection( -(y-y_tr - 0.5*h_tr), -(-(y-y_tr + 0.5*h_tr)) ));
+  //fraction(c, intersection( -(y-y_tr - 0.5*h_tr), -(-(y-y_tr + 0.5*h_tr)) ));
+
+  // f: volume fraction; f=1-liq; cs: solid; cs=1-inside
+  #if HORIZONTAL_MIXL
+  fraction (c, 0-x);
+  foreach(){
+    if ((cs[] == 0)) // only outside
+      c[] = 0;
+    if ((f[] < 1))   // all gas (f=1 is liquid)
+      c[] = 0;
+    //if ((f[] > 0) && (f[] < 1)) // interface
+    //  c[] = f[];
+  }
+  #endif
+
+  #if HORIZONTAL_MIXR
+  fraction (c1, 0+x);
+  foreach(){
+    if ((cs[] == 0)) // only outside
+      c1[] = 0;
+    if ((f[] < 1))   // all gas (f=1 is liquid)
+      c1[] = 0;
+    //if ((f[] > 0) && (f[] < 1)) // interface
+    //  c1[] = f[];
+  }
+  #endif
+
+  // Tracer in the upperside of the liquid
+  #if VERTICAL_MIXUP
+  foreach(){
+    if ((f[] == 1) && (cs[]==1) && (y >= -Ly*0.5*0.5))
+      c2[] = 1.0;
+  }
+  #endif
+  #if VERTICAL_MIXDOWN
+  foreach(){
+    if ((f[] == 1) && (cs[]==1) && (y <= -Ly*0.5*0.5))
+      c3[] = 1.0;
+  }
+  #endif
 }
 #endif
 
@@ -319,10 +372,10 @@ event acceleration(i++)
   // 1st: gravitational force, 2nd: Coriolis force
   // 3rd: centrifugal force,   4th: azimuthal force, 5th: no traslational force
   foreach_face(x)
-    av.x[] = -sin(Th)/(Fr*Fr) + 2*Th_d*face_value(u.y,0)	\
+    av.x[] = -sin(Th)/(Fr*Fr) + 2*Th_d*(u.y[] + u.y[-1,0])*0.5	\
     + Th_d*Th_d*(x+L_piv*sin(Th)) + Th_2d*(y+L_piv*cos(Th));
   foreach_face(y)
-    av.y[] = -cos(Th)/(Fr*Fr) - 2*Th_d*face_value(u.x,0)	\
+    av.y[] = -cos(Th)/(Fr*Fr) - 2*Th_d*(u.x[] + u.x[0,-1])*0.5	\
     + Th_d*Th_d*(y+L_piv*cos(Th)) - Th_2d*(x+L_piv*sin(Th));
   a = av;
 }
@@ -377,11 +430,11 @@ event normcal (i+=i_norm){
       omega_liq[] = omega[]*f[];
       f_liq[]   =  (1-cs[])*f[];
       c_liq[]   = c[]*f[];
-      /*
+      ///*
       c1_liq[]  = c1[]*f[];
       c2_liq[]  = c2[]*f[];
       c3_liq[]  = c3[]*f[];
-      */
+      //*/
     }
 
     position (f, posY, {0,1,0});  // (0,1,0) indicates the unit vector in the y-direction
@@ -408,14 +461,14 @@ event normcal (i+=i_norm){
     oxy_liq_sum2  = statsf2(oxy_liq).sum2;
     c_liq_sum     = statsf2(c_liq).sum;
     c_liq_sum2    = statsf2(c_liq).sum2;
-    /*
+    ///*
     c1_liq_sum    = statsf(c1_liq).sum;
     c1_liq_sum2   = statsf2(c1_liq).sum2;
     c2_liq_sum    = statsf(c2_liq).sum;
     c2_liq_sum2   = statsf2(c2_liq).sum2;
     c3_liq_sum    = statsf(c3_liq).sum;
     c3_liq_sum2   = statsf2(c3_liq).sum2;
-    */
+    //*/
 
    // i, timestep, no of cells, real time elapsed, cpu time
    if (pid() == 0){
@@ -426,8 +479,8 @@ event normcal (i+=i_norm){
       fprintf(fp_stats2, "%i %g %g %g %g %g \n",i,t,f_liq_sum,f_liq_interf,posY_max,posY_min);
       fflush(fp_stats2);
 
-      //fprintf(fp_stats3, "%i %g %g %g %g %g %g %g %g %g %g %g \n",i,t,oxy_liq_sum,oxy_liq_sum2,c_liq_sum,c_liq_sum2,c1_liq_sum,c1_liq_sum2,c2_liq_sum,c2_liq_sum2,c3_liq_sum,c3_liq_sum2);
-      fprintf(fp_stats3, "%i %g %g %g %g %g \n",i,t,oxy_liq_sum,oxy_liq_sum2,c_liq_sum,c_liq_sum2);
+      fprintf(fp_stats3, "%i %g %g %g %g %g %g %g %g %g %g %g \n",i,t,oxy_liq_sum,oxy_liq_sum2,c_liq_sum,c_liq_sum2,c1_liq_sum,c1_liq_sum2,c2_liq_sum,c2_liq_sum2,c3_liq_sum,c3_liq_sum2);
+      //fprintf(fp_stats3, "%i %g %g %g %g %g \n",i,t,oxy_liq_sum,oxy_liq_sum2,c_liq_sum,c_liq_sum2);
       fflush(fp_stats3);
    }
 }
@@ -522,18 +575,18 @@ event movies_upgrade(t += dt_video; t<=t_end)
   clear();
   view(width=1200,height=1200,fov=24.0,ty=0.0);
   draw_vof("f",lw=2);
-  squares("c",map=cool_warm,min=0.0,max=0.1);
+  squares("c",map=cool_warm,min=0.0,max=1.0);
   draw_vof("cs","fs");
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
   save("tracer.mp4");
   save("tracer.png");
-/*
+///*
   // tracer1
   clear();
   view(width=1200,height=1200,fov=24.0,ty=0.0);
   draw_vof("f",lw=2);
-  squares("c1",map=cool_warm,min=0.0,max=0.1);
+  squares("c1",map=cool_warm,min=0.0,max=1.0);
   draw_vof("cs","fs");
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
@@ -544,7 +597,7 @@ event movies_upgrade(t += dt_video; t<=t_end)
   clear();
   view(width=1200,height=1200,fov=24.0,ty=0.0);
   draw_vof("f",lw=2);
-  squares("c2",map=cool_warm,min=0.0,max=0.1);
+  squares("c2",map=cool_warm,min=0.0,max=1.0);
   draw_vof("cs","fs");
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
@@ -555,19 +608,19 @@ event movies_upgrade(t += dt_video; t<=t_end)
   clear();
   view(width=1200,height=1200,fov=24.0,ty=0.0);
   draw_vof("f",lw=2);
-  squares("c3",map=cool_warm,min=0.0,max=0.1);
+  squares("c3",map=cool_warm,min=0.0,max=1.0);
   draw_vof("cs","fs");
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
   save("tracer3.mp4");
   save("tracer3.png");
-*/
+//*/
   // oxygen
   #if OXYGEN
   clear();
   view(width=1200,height=1200,fov=24.0,ty=0.0);
   draw_vof("f",lw=2);
-  squares("oxy",map=cool_warm,min=0.0,max=0.04);
+  squares("oxy",map=cool_warm,min=0.0,max=0.033);
   draw_vof("cs","fs");
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
@@ -581,14 +634,17 @@ event movies_upgrade(t += dt_video; t<=t_end)
 event Figures_new(t=t_mix; t<=t_end; t += dt_Fig)
 {
   scalar omega[];
-  char timestring[100],figN1[100],figN2[100],figN3[100],figN4[100];
+  char timestring[100],figN1[100],figN2[100],figN3[100],figN4[100],figN5[100],figN6[100],figN7[100];
   
   vorticity (u,omega);
   
   snprintf(figN1, sizeof(figN1), "Fig_vor/vor_%d_%.9g.png",N,t);
-  snprintf(figN2, sizeof(figN2), "Fig_vol/vor_%d_%.9g.png",N,t);
-  snprintf(figN3, sizeof(figN3), "Fig_tr/vor_%d_%.9g.png",N,t);
-  snprintf(figN4, sizeof(figN4), "Fig_oxy/vor_%d_%.9g.png",N,t);
+  //snprintf(figN2, sizeof(figN2), "Fig_vol/vol_%d_%.9g.png",N,t);
+  //snprintf(figN3, sizeof(figN3), "Fig_tr/tr_%d_%.9g.png",N,t);
+  //snprintf(figN4, sizeof(figN4), "Fig_tr/tr1_%d_%.9g.png",N,t);
+  snprintf(figN5, sizeof(figN5), "Fig_tr/tr2_%d_%.9g.png",N,t);
+  //snprintf(figN6, sizeof(figN6), "Fig_tr/tr3_%d_%.9g.png",N,t);
+  //snprintf(figN7, sizeof(figN7), "Fig_oxy/oxy_%d_%.9g.png",N,t);
 
   // vorticity
   clear();
@@ -601,6 +657,7 @@ event Figures_new(t=t_mix; t<=t_end; t += dt_Fig)
   save(figN1);
 
   // volume fraction
+/*
   clear();
   view(width=1200,height=1200,fov=24.0,ty=0.0);
   draw_vof("f",lw=2);
@@ -610,29 +667,65 @@ event Figures_new(t=t_mix; t<=t_end; t += dt_Fig)
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
   save(figN2);
+*/
 
   // tracer
-  #if TRACER
+#if TRACER
+  #if HORIZONTAL_MIXL
   clear();
   view(width=1200,height=1200,fov=24.0,ty=0.0);
   draw_vof("f",lw=2);
-  squares("c",map=cool_warm,min=0.0,max=0.1);
+  squares("c",map=cool_warm,min=0.0,max=1.0);
   draw_vof("cs","fs");
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
   save(figN3);
   #endif
-  
+
+  #if HORIZONTAL_MIXR
+  clear();
+  view(width=1200,height=1200,fov=24.0,ty=0.0);
+  draw_vof("f",lw=2);
+  squares("c1",map=cool_warm,min=0.0,max=1.0);
+  draw_vof("cs","fs");
+  sprintf(timestring,"t=%2.03fs",t*T_bio);
+  draw_string(timestring,pos=4,lc={0,0,0},lw=2);
+  save(figN4);
+  #endif
+
+  #if VERTICAL_MIXUP
+  clear();
+  view(width=1200,height=1200,fov=24.0,ty=0.0);
+  draw_vof("f",lw=2);
+  squares("c2",map=cool_warm,min=0.0,max=1.0);
+  draw_vof("cs","fs");
+  sprintf(timestring,"t=%2.03fs",t*T_bio);
+  draw_string(timestring,pos=4,lc={0,0,0},lw=2);
+  save(figN5);
+  #endif
+
+  #if VERTICAL_MIXDOWN
+  clear();
+  view(width=1200,height=1200,fov=24.0,ty=0.0);
+  draw_vof("f",lw=2);
+  squares("c3",map=cool_warm,min=0.0,max=1.0);
+  draw_vof("cs","fs");
+  sprintf(timestring,"t=%2.03fs",t*T_bio);
+  draw_string(timestring,pos=4,lc={0,0,0},lw=2);
+  save(figN6);
+  #endif
+#endif
+
   // oxygen
   #if OXYGEN
   clear();
   view(width=1200,height=1200,fov=24.0,ty=0.0);
   draw_vof("f",lw=2);
-  squares("oxy",map=cool_warm,min=0.0,max=0.04);
+  squares("oxy",map=cool_warm,min=0.0,max=0.033);
   draw_vof("cs","fs");
   sprintf(timestring,"t=%2.03fs",t*T_bio);
   draw_string(timestring,pos=4,lc={0,0,0},lw=2);
-  save(figN4);
+  save(figN7);
   #endif
 }
 #endif
@@ -646,11 +739,11 @@ event figures(i += i_fig; t <= t_end)
   output_ppm(f, file = "vol_frac.png");
   #if TRACER
   output_ppm(c, file = "tracer.png");
-  /*
+  ///*
   output_ppm(c1, file = "tracer1.png");
   output_ppm(c2, file = "tracer2.png");
   output_ppm(c3, file = "tracer3.png");
-  */
+  //*/
   #endif
   //output_ppm(omega, file="vorticity.png");
   //output_ppm(u.x, file="x-vel.png");
@@ -663,7 +756,7 @@ event figures(i += i_fig; t <= t_end)
 #endif
 
 #if OUT_FILES
-event out_files(t+=dt_file; t<=t_end_file)
+event out_files(t=t_mix; t<=t_end_file; t+=dt_file)
 {
   scalar omega[];
   vorticity(u,omega);
@@ -672,10 +765,43 @@ event out_files(t+=dt_file; t<=t_end_file)
   snprintf(buf1, sizeof(buf1), "Data_all/Data_all_%d_%.9g_%d.txt",N,t,pid());
   FILE * out_all = fopen(buf1,"wb");  
 
-  fprintf(out_all,"x y ux uy vol_frac tracer solid oxygen vorticity \n");
+  fprintf(out_all,"x y ux uy vol_frac tracer solid oxygen vorticity tracer1-3 \n");
   foreach()
-    //fprintf(out_all,"%g %g %g %g %g %g %g %g %g %g %g\n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[],c1[],c2[],c3[]);
-    fprintf(out_all,"%g %g %g %g %g %g %g %g %g \n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[],omega[]);
+    fprintf(out_all,"%g %g %g %g %g %g %g %g %g %g %g %g\n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[],omega[],c1[],c2[],c3[]);
+    //fprintf(out_all,"%g %g %g %g %g %g %g %g %g \n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[],omega[]);
+  fclose(out_all);
+  //*/
+
+  // Only works for single node; for multiiple nodes, this should be turned off
+  #if OUT_INTERFACE
+    snprintf(buf4, sizeof(buf4), "Data_all/Interf_%d_%.9g_%d.txt",N,t,pid());
+    FILE * out_interf = fopen(buf4,"wb");
+    output_facets(f,out_interf);   // Interface extraction
+    fclose(out_interf);
+  #endif
+
+/*
+  char name[80];
+  sprintf(name,"Data_all/Output_%d_%.4g.dat",N,t);
+  FILE * out_all2 = fopen(name,"w");
+  output_field({u.x,u.y,f,c,cs,oxy},out_all2,n=N_output,linear=true);
+  fclose(out_all2);
+*/
+}
+
+event out_files_initial(t=0; t<=t_mix; t+=dt_file)
+{
+  scalar omega[];
+  vorticity(u,omega);
+
+  ///*
+  snprintf(buf1, sizeof(buf1), "Data_all/Data_all_%d_%.9g_%d.txt",N,t,pid());
+  FILE * out_all = fopen(buf1,"wb");  
+
+  fprintf(out_all,"x y ux uy vol_frac tracer solid oxygen vorticity tracer1-3 \n");
+  foreach()
+    fprintf(out_all,"%g %g %g %g %g %g %g %g %g %g %g %g\n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[],omega[],c1[],c2[],c3[]);
+    //fprintf(out_all,"%g %g %g %g %g %g %g %g %g \n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[],omega[]);
   fclose(out_all);
   //*/
 
@@ -706,9 +832,10 @@ event out_spec_time(t=t_spec_init; t<=t_spec_end; t+=dt_spec)
   snprintf(buf2, sizeof(buf2), "Data_specific/Data_all_%d_%.9g_%d.txt",N,t,pid());
   FILE * out_all_spec = fopen(buf2,"wb");  
 
-  fprintf(out_all_spec,"x y ux uy vol_frac tracer solid oxygen vorticity \n");
+  fprintf(out_all_spec,"x y ux uy vol_frac tracer solid oxygen vorticity tracer1-3 \n");
   foreach()
-    fprintf(out_all_spec,"%g %g %g %g %g %g %g %g %g \n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[],omega[]);
+  fprintf(out_all_spec,"%g %g %g %g %g %g %g %g %g %g %g %g \n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[],omega[],c1[],c2[],c3[]);
+    // fprintf(out_all_spec,"%g %g %g %g %g %g %g %g %g \n",x,y,u.x[],u.y[],f[],c[],cs[],oxy[],omega[]);
   fclose(out_all_spec);
 
   // Only works for single node; for multiiple nodes, this should be turned off
