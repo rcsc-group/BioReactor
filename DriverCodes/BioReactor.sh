@@ -11,12 +11,10 @@ for MIN_LEVEL in 7; do
 	qcc -I -O2 -w -fopenmp -Wall BioReactor.c -o $NAME -L$BASILISK/gl -lglutils -lfb_tiny -lm
 	export OMP_NUM_THREADS=2
 
-	# Bioreactor
+	# Bioreactor parameters
 	# 1. Width
 	# 2. Rocking angle (degree)
 	# 3. Rocking rpm
-	# 4. MINLEVEL
-	# 5. MAXLEVEL	
 	
 	./$NAME 0.25 7 37.5
     done
