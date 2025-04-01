@@ -1,3 +1,7 @@
+// Primary author: Minki Kim
+// Contributor: Radu Cimpeanu
+// Date: 03/04/2025
+
 // Core Basilisk modules for embedding geometries and centered Navier-Stokes solver
 #include "embed.h"
 #include "navier-stokes/centered.h"
