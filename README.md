@@ -1,9 +1,9 @@
 # Bioreactor Simulation for Cultivated Meat Production
 
-This repository contains a **two-phase flow simulation of a rocking bioreactor**, implemented in the [Basilisk](http://basilisk.fr/) open-source CFD platform. This collaborative work is conducted by the Radu Cimpeanu Scientific Computing Group at the University of Warwick and the Harris Lab at Brown University. The preprint of this work is available at https://arxiv.org/.
+This repository contains the driver code for the **two-phase flow simulation of a rocking bioreactor**, implemented in the [Basilisk](http://basilisk.fr/) open-source CFD platform. This collaborative work is conducted at the intersection between the Scientific Computing Group at the University of Warwick led by [Dr. Radu Cimpeanu](https://www.raducimpeanu.com/) and the Harris Lab at Brown University led by [Prof. Daniel Harris](https://vivo.brown.edu/display/dharri15), with [Dr. Minki Kim](https://engineering.brown.edu/people/minki-kim) (Brown University) as lead developer. The associated preprint for this work is available at https://arxiv.org/.
 
 ## 📌 Features:
-- ✅ liquid-gas dynamics with embedded solid boundaries inside a rocking bioreactor
+- ✅ Liquid-gas dynamics with embedded solid boundaries inside a two-dimensional rocking bioreactor
 - ✅ Tracer advection/diffusion for evaluating mixing efficiency
 - ✅ Oxygen transport, including advection, diffusion and gas-to-liquid interfacial transfer
 - ✅ Body acceleration in a non-inertial frame of reference, accounting for gravity, Coriolis, and centrifugal effects
@@ -11,12 +11,12 @@ This repository contains a **two-phase flow simulation of a rocking bioreactor**
 ---
 
 
-## 🛠️ Installations
+## 🛠️ Installation
 
 ### 1. Requirements
 - [Basilisk](http://basilisk.fr/) (compiled with `qcc`)
 - C compiler
-- Gnuplot / FFmpeg (for visualizing results)
+- Gnuplot / ffmpeg (for visualizing results)
 ```bash
 sudo apt install gnuplot imagemagick ffmpeg graphviz valgrind gifsicle pstoedit
 ```
@@ -26,8 +26,8 @@ sudo apt install gnuplot imagemagick ffmpeg graphviz valgrind gifsicle pstoedit
 git clone https://github.com/rcsc-group/BioReactor
 cd DriverCodes
 ```
-### 3. Install the Basilisk
-The code relies on Basilisk to solve the Navier–Stokes equations. Please refer to the installation page for setup instructions: http://basilisk.fr/src/INSTALL
+### 3. Installing Basilisk
+The code relies on Basilisk to solve the Navier–Stokes equations. Please refer to the [Basilisk installation page](http://basilisk.fr/src/INSTALL) for detailed setup instructions.
 
 ### 4. Copy and paste the header files and compile the main code
 - Copy the four header files (draw3.h, henry_oxy2.h, utils2.h, and view3.h) into the src folder of the Basilisk source directory.
@@ -68,15 +68,15 @@ Modify flags at the top of main.c to enable features:
 
 ```bash
 .                        
-├── main.c               # Main bioreactor simulation code
-├── henry_oxy2.h         # Header for oxygen transport functionality
-├── view3.h, utils2.h    # Visualization and utility functions (customized)
-├── Data_all/            # Simulation output (velocity, tracer, oxygen, etc.)
+├── main.c                 # Main bioreactor simulation code
+├── henry_oxy2.h           # Header for oxygen transport functionality
+├── view3.h, utils2.h      # Visualization and utility functions (customized)
+├── Data_all/              # Simulation output (velocity, tracer, oxygen, etc.)
 ├── Fig_vol/, Fig_tr/, ... # Saved PNG images for different fields
-├── logstats.dat         # Performance and runtime log
-├── normf.dat            # Velocity/vorticity/volume fraction norms over time
-├── vol_frac_interf.dat  # Interface volume fraction statistics
-├── tr_oxy.dat           # Integrated tracer and oxygen values
+├── logstats.dat           # Performance and runtime log
+├── normf.dat              # Velocity/vorticity/volume fraction norms over time
+├── vol_frac_interf.dat    # Interface volume fraction statistics
+├── tr_oxy.dat             # Integrated tracer and oxygen values
 ```
 
 ---
@@ -90,7 +90,7 @@ Generates:
 - `*.mp4` videos (vorticity, tracer, oxygen, volume fraction)
 - `*.png` figures (vorticity, tracer, oxygen, volume fraction)
 
-The sample videos can be found 
+Video generation is quite resource-intensive, and may be switched on and off depending on the stage of the development cycle. Beyond production runs purposes, we occasionally found these useful for debugging as well, however the frame rate can be adapted accordingly via the dt_video variable specification.
 
 ---
 
@@ -100,7 +100,7 @@ The sample videos can be found
 If you use this code for research or teaching, please cite Basilisk and include a reference to this repository.
 
 - GitHub Repo: https://github.com/yourusername/bioreactor-basilisk
-- Author: Minki Kim, Dan M. Harris, Radu Cimpeneau
+- Authors: Minki Kim, Dan M. Harris, Radu Cimpeanu
 - License: MIT License
 
 ---
@@ -108,7 +108,7 @@ If you use this code for research or teaching, please cite Basilisk and include 
 
 ## 🧑 Contributing
 
-Feel free to:
+Please feel free to:
 - Fork this repo
 - Open issues
 - Submit pull requests
