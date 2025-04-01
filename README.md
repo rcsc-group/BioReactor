@@ -68,14 +68,14 @@ Modify flags at the top of main.c to enable features:
 
 ```bash
 .                        
-├── main.c               # Main Basilisk simulation code
-├── henry_oxy2.h         # Header for oxygen transport config
+├── main.c               # Main bioreactor simulation code
+├── henry_oxy2.h         # Header for oxygen transport functionality
 ├── view3.h, utils2.h    # Visualization and utility functions (customized)
 ├── Data_all/            # Simulation output (velocity, tracer, oxygen, etc.)
 ├── Fig_vol/, Fig_tr/, ... # Saved PNG images for different fields
 ├── logstats.dat         # Performance and runtime log
-├── normf.dat            # Velocity/vorticity norms over time
-├── vol_frac_interf.dat  # Interface positions and volume fraction summary
+├── normf.dat            # Velocity/vorticity/volume fraction norms over time
+├── vol_frac_interf.dat  # Interface volume fraction statistics
 ├── tr_oxy.dat           # Integrated tracer and oxygen values
 ```
 
