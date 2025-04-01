@@ -10,6 +10,7 @@ This repository contains a **two-phase flow simulation of a rocking bioreactor**
 
 ---
 
+
 ## 🛠️ Installations
 
 ### 1. Requirements
@@ -34,7 +35,9 @@ The code relies on Basilisk to solve the Navier–Stokes equations. Please refer
 - The shell script runs the executable file: ./Bioreactor L_bio ANGLE RPM
   - L_bio: Reference length scale in meters (e.g., 0.25)
   - ANGLE: Rocking angle in degrees (e.g., 7)
-  - RPM – Rocking frequency in RPM (e.g., 32.5)
+  - RPM: Rocking frequency in RPM (e.g., 32.5)
+
+---
 
 
 ## ⚙️ Key Simulations Configuration Options
@@ -44,31 +47,22 @@ Modify flags at the top of main.c to enable features:
 - EMBED: Enable embedded boundary for solid geometry
 - OXYGEN: Enable oxygen concentration simulation
   - OXYGEN_CIRCLE: Initial distribution (circle) of oxygen (if OXYGEN == 1)
-#define OXYGEN_AIR       1   // Initial distribution (air side) of oxygen (if OXYGEN == 1)
-
-// Mixing strategies for tracer release
-#define TRACER           1   // Enable passive tracer simulation
-#define HORIZONTAL_MIXL  0   // Initial distribution (left side) of tracer: Horizontal mixing (if TRACER == 1)
-#define HORIZONTAL_MIXR  0   // Initial distribution (right side) of tracer: Horizontal mixing (if TRACER == 1)
-#define VERTICAL_MIXUP   1   // Initial distribution (top side) of tracer: Vertical mixing (if TRACER == 1)
-#define VERTICAL_MIXDOWN 0   // Initial distribution (bottom side) of tracer: Vertical mixing (if TRACER == 1)
-
-// Other simulation options
-#define ACCELERATION     1   // Enable acceleration (rocking motion)
-#define AMR              0   // Enable adaptive mesh refinement
-#define REMOVE_DROP      0   // Enable automatic droplet removal
-#define CFL_COND         0   // Use custom CFL number
-#define DUMP             0   // Save dump output
-#define NORMCAL          1   // Calculate statistics (norms)
-#define FIGURES          1   // Save figures
-#define VIDEOS           1   // Save videos
-
-// Output options
-#define OUT_FILES         1   // Output full fields
-#define OUT_SPECIFIC_TIME 0   // Output data at specific time ranges
-#define OUT_INTERFACE     1   // Save interface geometry
+  - OXYGEN_AIR: Initial distribution (air side) of oxygen (if OXYGEN == 1)
+- TRACER: Enable passive tracer simulation
+  - HORIZONTAL_MIXL: Initial distribution (left side) of tracer: Horizontal mixing (if TRACER == 1)
+  - HORIZONTAL_MIXR: Initial distribution (right side) of tracer: Horizontal mixing (if TRACER == 1)
+  - VERTICAL_MIXUP: Initial distribution (top side) of tracer: Vertical mixing (if TRACER == 1)
+  - VERTICAL_MIXDOWN: Initial distribution (bottom side) of tracer: Vertical mixing (if TRACER == 1)
+- ACCELERATION: Enable acceleration (rocking motion)
+- NORMCAL: Calculate statistics (norms)
+- FIGURES: Save figures
+- VIDEOS: Save videos
+- OUT_FILES: Output full fields
+- OUT_SPECIFIC_TIME: Output data at specific time ranges
+- OUT_INTERFACE: Save interface geometry
 
 ---
+
 
 ## 📁 Folder Structure
 
@@ -87,6 +81,7 @@ Modify flags at the top of main.c to enable features:
 
 ---
 
+
 ## 📊 Outputs
 
 Generates:
@@ -99,6 +94,7 @@ The sample videos can be found
 
 ---
 
+
 ## 📌 References
 
 If you use this code for research or teaching, please cite Basilisk and include a reference to this repository.
@@ -108,6 +104,7 @@ If you use this code for research or teaching, please cite Basilisk and include 
 - License: MIT License
 
 ---
+
 
 ## 🧑 Contributing
 
