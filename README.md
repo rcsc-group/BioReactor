@@ -3,9 +3,9 @@
 This repository contains the driver code for the **two-phase flow simulation of a rocking bioreactor**, implemented in the [Basilisk](http://basilisk.fr/) open-source CFD platform. This collaborative work is conducted at the intersection between the Scientific Computing Group at the University of Warwick led by [Dr. Radu Cimpeanu](https://www.raducimpeanu.com/) and the Harris Lab at Brown University led by [Prof. Daniel Harris](https://vivo.brown.edu/display/dharri15), with [Dr. Minki Kim](https://www.minki-kim.com/) (Brown University) as lead developer. The associated preprint for this work is available at https://arxiv.org/.
 
 ## 📌 Features:
-✅ Liquid-gas dynamics with embedded solid boundaries inside a two-dimensional rocking bioreactor
-✅ Tracer advection/diffusion for evaluating mixing efficiency
-✅ Oxygen transport, including advection, diffusion and gas-to-liquid interfacial transfer
+✅ Liquid-gas dynamics with embedded solid boundaries inside a two-dimensional rocking bioreactor  
+✅ Tracer advection/diffusion for evaluating mixing efficiency  
+✅ Oxygen transport, including advection, diffusion and gas-to-liquid interfacial transfer  
 ✅ Body acceleration in a non-inertial frame of reference, accounting for gravity, Coriolis, and centrifugal effects
 
 ---
