@@ -389,16 +389,17 @@ event oxygen (t=t_mix; i++){
 // ================================================================== //
 //                           ACCELERATION                             //
 // ================================================================== //
+#if ACCELERATION
 event acceleration(i++)
 {
-  // Transition phase (smooth ramp-up)
+  // Regular oscillation (post transition)  
   if (t >= t_change_st){
     Th    = Th_max*sin(w_bio_st*t);                     // Angle
     Th_d  = w_bio_st*Th_max*cos(w_bio_st*t);            // Angular velocity
     Th_2d = -w_bio_st*w_bio_st*Th_max*sin(w_bio_st*t);  // Angular acceleration
   }
 
-  // Regular oscillation (post transition)
+  // Transition phase (smooth ramp-up)
   else if (t < t_change_st){
     Th_max2 = (Th_max-0)/(t_change_st-0)*t;
     Th    = Th_max2*sin(w_bio_st*t);
