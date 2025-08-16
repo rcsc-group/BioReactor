@@ -1,6 +1,6 @@
 # Bioreactor Simulation for Cultivated Meat Production
 
-This repository contains the driver code for the **two-phase flow simulation of a rocking bioreactor**, implemented in the [Basilisk](http://basilisk.fr/) open-source CFD platform. This collaborative work is conducted at the intersection between the Scientific Computing Group at the University of Warwick led by [Dr. Radu Cimpeanu](https://www.raducimpeanu.com/) and the Harris Lab at Brown University led by [Prof. Daniel Harris](https://vivo.brown.edu/display/dharri15), with [Dr. Minki Kim](https://www.minki-kim.com/) (Brown University) as lead developer. The associated preprint for this work is available at https://arxiv.org/.
+This repository contains the driver code for the **two-phase flow simulation of a rocking bioreactor**, implemented in the [Basilisk](http://basilisk.fr/) open-source CFD platform. This collaborative work is conducted at the intersection between the Scientific Computing Group at the University of Warwick led by [Dr. Radu Cimpeanu](https://www.raducimpeanu.com/) and the Harris Lab at Brown University led by [Prof. Daniel Harris](https://vivo.brown.edu/display/dharri15), with [Dr. Minki Kim](https://www.minki-kim.com/) (Brown University) as lead developer. The open-access publication is available at [doi: 10.1016/j.ijmultiphaseflow.2025.105375](https://www.sciencedirect.com/science/article/pii/S0301932225002538#d1e10550), while the associated preprint for this work is available on [arXiv: 2504.05421](https://arxiv.org/abs/2504.05421).
 
 ## 📌 Features:
 ✅ Liquid-gas dynamics with embedded solid boundaries inside a two-dimensional rocking bioreactor  
@@ -112,3 +112,4 @@ Please feel free to:
 - Fork this repo
 - Open issues
 - Submit pull requests
+
